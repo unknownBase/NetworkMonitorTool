@@ -1,0 +1,21 @@
+# .NET / Visual Studio
+.vs/
+bin/
+obj/
+*.user
+*.suo
+
+# 构建产物与发布包
+publish/
+artifacts/
+*.nupkg
+
+# 本地数据（正常运行时位于 %LOCALAPPDATA%，防御性忽略仓库内副本）
+*.db
+*.db-shm
+*.db-wal
+logs/
+
+# IDE
+.idea/
+*.DotSettings.user
