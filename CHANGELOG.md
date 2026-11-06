@@ -17,5 +17,9 @@
 - `AppPaths` 数据目录改为可配置项（`storage.dataDirectory`，默认 `%LOCALAPPDATA%\NetworkMonitorTool`），
   配置文件固定存于默认目录；对应开发计划：S3 接入 `IConfigService` 与 `IDataMigrationService`
   （保存切换目录后自动迁移已有数据，失败不丢数据），S4 设置页提供目录选择，S5 补生效联动。
+- S2 检测核心：`DetectionStatus` / 端口三态 / 端口策略枚举与 `DetectionRecord` 等领域模型，
+  `DetectionStatusToBrushConverter` 状态→颜色转换器，`PingProbe` 与 `TcpPortProbe`（错误摘要区分超时/不可达/权限/拒绝），
+  `IDetectionService` 单次检测编排（端口策略四分支）与 `ISchedulerService` 周期调度（启动/停止/暂停/恢复，与页面解耦），
+  经 `AddDetectionCore` 统一注册；新增控制台验证驱动 `tools/DetectorConsole`。
 
 <!-- 下一版本条目在此之后追加 -->

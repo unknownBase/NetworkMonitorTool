@@ -36,10 +36,11 @@
 
 ### S2 检测核心
 
-- [ ] `DetectionStatus` 枚举（成功 / Ping失败 / 端口失败 / 异常 / 暂停中 / 告警中）与状态→颜色转换器
-- [ ] `PingProbe` + `TcpPortProbe`（超时、错误摘要区分超时/不可达/权限）
-- [ ] `IDetectionService`：单次检测编排，端口策略四分支（策略 UI 在 S10 补全，先实现逻辑）
-- [ ] `ISchedulerService`：周期触发（间隔时/分/秒），启动/停止/暂停/恢复，与页面解耦
+- [x] `DetectionStatus` 枚举（成功 / Ping失败 / 端口失败 / 异常 / 暂停中 / 告警中）与状态→颜色转换器
+- [x] `PingProbe` + `TcpPortProbe`（超时、错误摘要区分超时/不可达/权限）
+- [x] `IDetectionService`：单次检测编排，端口策略四分支（策略 UI 在 S10 补全，先实现逻辑）
+- [x] `ISchedulerService`：周期触发（间隔时/分/秒），启动/停止/暂停/恢复，与页面解耦
+- [x] 控制台验证驱动 `tools/DetectorConsole`（复用 `AddDetectionCore` DI 注册，驱动周期检测并输出结果）
 
 ### S3 存储与配置
 

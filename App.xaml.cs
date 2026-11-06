@@ -41,9 +41,10 @@ namespace NetworkMonitorTool
                     // ---- 窗口 ----
                     services.AddSingleton<MainWindow>();
 
-                    // ---- 服务占位（S2~S10 逐个实现并注册）----
-                    // services.AddSingleton<IDetectionService, DetectionService>();     // S2
-                    // services.AddSingleton<ISchedulerService, SchedulerService>();     // S2
+                    // ---- S2 检测核心（探测 / 编排 / 调度）----
+                    services.AddDetectionCore();
+
+                    // ---- 服务占位（S3~S10 逐个实现并注册）----
                     // services.AddSingleton<IStoreService, SqliteStoreService>();       // S3
                     // services.AddSingleton<IConfigService, JsonConfigService>();       // S3
                     // services.AddSingleton<ICleanupService, CleanupService>();         // S3

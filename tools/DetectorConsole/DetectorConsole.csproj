@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- S2 收口验证用：控制台驱动一轮周期检测并输出结果，与 WPF 界面解耦 -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>NetworkMonitorTool.DetectorConsole</RootNamespace>
+    <AssemblyName>DetectorConsole</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\NetworkMonitorTool.csproj" />
+  </ItemGroup>
+
+</Project>
