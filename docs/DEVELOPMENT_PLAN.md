@@ -27,11 +27,12 @@
 
 ### S1 工程骨架
 
-- [ ] 创建 `Models/ Services/ ViewModels/ Views/ Converters/` 目录并迁移代码
-- [ ] 引入 NuGet：`Microsoft.Extensions.Hosting`、`CommunityToolkit.Mvvm`、`WPF-UI`、`Microsoft.Data.Sqlite`
-- [ ] App.xaml 接入泛型主机（`Host.CreateDefaultBuilder`），DI 注册占位
-- [ ] 全局异常处理：`DispatcherUnhandledException` + `TaskScheduler.UnobservedTaskException` → 写日志并提示
-- [ ] `.gitignore`（bin/obj/.vs/*.user/本地数据）、`AssemblyInfo` 版本号
+- [x] 创建 `Models/ Services/ ViewModels/ Views/ Converters/` 目录并迁移代码
+- [x] 引入 NuGet：`Microsoft.Extensions.Hosting`、`CommunityToolkit.Mvvm`、`WPF-UI`、`Microsoft.Data.Sqlite`
+- [x] App.xaml 接入泛型主机（`Host.CreateDefaultBuilder`），DI 注册占位
+- [x] 全局异常处理：`DispatcherUnhandledException` + `TaskScheduler.UnobservedTaskException` → 写日志并提示
+- [x] `.gitignore`（bin/obj/.vs/*.user/本地数据）、`AssemblyInfo` 版本号
+- [x] `AppPaths` 数据目录可配置（storage.dataDirectory，默认为用户目录；配置文件固定存默认目录）
 
 ### S2 检测核心
 
@@ -45,6 +46,8 @@
 - [ ] SQLite 建表：`detect_record`、`alert_record`（分表）
 - [ ] `IStoreService`：逐条写入、按保留期加载、清空；写入失败降级为仅内存 + 界面提示
 - [ ] `MonitorConfig` 等模型 + 配置版本号；`%LOCALAPPDATA%\NetworkMonitorTool\appsettings.json` 读写，缺失字段取默认
+- [ ] 数据目录配置项 `storage.dataDirectory`：由 `IConfigService` 统一接管读取（替换 AppPaths 内的临时解析），校验合法性（绝对路径、可写、磁盘空间）
+- [ ] `IDataMigrationService`：保存并切换数据目录时，将数据库（含 -shm/-wal）、日志复制到新目录，验证成功后重写配置并切换；失败保持原目录并提示，不丢数据
 - [ ] `ICleanupService`：按保留天数删除过期记录（启动一次 + 每小时）
 
 ### S4 页面框架
@@ -52,7 +55,7 @@
 - [ ] `ShellViewModel`：导航命令、当前页、全局状态、上次停留页记忆
 - [ ] 主窗口：左导航 + 右 ContentControl，顶/底栏全局状态标识
 - [ ] 仪表盘页 VM：状态大标识、目标摘要、最近检测时间/延迟/连续失败数、快捷操作、简表跳转
-- [ ] 设置页 VM：六组配置分区、保存/恢复默认/取消、行内校验、未保存切页确认
+- [ ] 设置页 VM：六组配置分区（含存储组的数据目录选择，目录浏览对话框）、保存/恢复默认/取消、行内校验、未保存切页确认
 - [ ] 关于页 VM：版本、配置/数据库/日志路径
 
 ### S5 日志与导出（MVP 收口）
@@ -61,6 +64,7 @@
 - [ ] `IExportService`：UTF-8 BOM、字段转义、默认文件名含 IP+时间戳、保存对话框、结果提示
 - [ ] 清空：二次确认 → 同清界面集合与数据库；页内保留期提示文案
 - [ ] 运行中保存配置 → 重启调度周期的生效联动
+- [ ] 运行中修改数据目录 → 触发迁移、成功切换 / 失败回退提示的生效联动（手测：改目录后历史记录与日志可在新目录查到）
 
 ### S6 告警引擎
 

@@ -1,9 +1,15 @@
 ﻿<Application x:Class="NetworkMonitorTool.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:local="clr-namespace:NetworkMonitorTool"
-             StartupUri="MainWindow.xaml">
+             xmlns:local="clr-namespace:NetworkMonitorTool">
+    <!-- 主窗口由泛型主机在 App.OnStartup 中经 DI 解析并启动，不使用 StartupUri -->
     <Application.Resources>
-         
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- WPF-UI 主题（S1 首日兼容性验证项） -->
+                <ui:ControlsDictionary xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml" />
+                <ui:ThemesDictionary Theme="Light" xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
     </Application.Resources>
 </Application>
