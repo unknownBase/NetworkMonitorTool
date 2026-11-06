@@ -30,5 +30,19 @@
   `IDataMigrationService` 安全切换数据目录（数据库含 -wal/-shm 与日志复制、integrity_check 与记录数验证、
   失败清理副本并保持原目录），`ICleanupService` + `CleanupHostedService` 按保留天数启动清理与每小时定时清理；
   `DetectorConsole` 扩展 `--load-only` / `--seed` / `--clear` / `--save-config` / `--migrate` / `--data-dir` 以验证 S3 收口。
+- S4 页面框架：主窗口壳（左侧五页导航 + 内容区 + 顶/底栏全局状态标识，经 `ContentControl` + `DataTemplate` 做 ViewModel-first 导航），
+  `ShellViewModel` 统一处理导航命令、当前页、上次停留页记忆与未保存离页 / 离窗拦截（`LeaveChoice`：保存 / 放弃 / 取消），
+  `IRuntimeStatusService`/`RuntimeStatusService` 全局界面状态中心（顶底栏、仪表盘与后续工具条 / 托盘共用一套状态含义，
+  后台事件经 `Dispatcher` 编组，订阅调度状态与 `IStoreService.WriteFailed` 降级上报），
+  仪表盘 / 日志 / 告警历史 / 设置 / 关于五个页面（`PageViewModelBase` 约定 `IsDirty` / `ActivateAsync` / `ConfirmLeaveAsync`）：
+  仪表盘提供状态大标识、目标摘要、最近检测时间 / 延迟 / 连续失败数与启动 / 停止 / 暂停 / 恢复快捷操作及查看全部记录跳转；
+  设置页按 DESIGN 六组分区（目标 / 检测 / 告警 / 存储 / 界面 / 启动）提供行内校验、基于序列化比较的未保存判定、
+  保存前数据目录迁移联动与失败回退提示；关于页展示版本与配置 / 数据库 / 日志路径并可一键打开目录；
+  `IDialogService`/`WpfDialogService` 统一消息提示、确认与文件夹选择对话框（.NET 8 `OpenFolderDialog`）；
+  `IConfigService` 新增 `ConfigChanged` 事件；新增 `InterfaceConfig`（关闭主窗口行为、工具条置顶 / 自动转换）与
+  `StartupConfig`（开机自启、自启后进工具条）两组配置与 `MonitorConfig.Clone()` 深拷贝；
+  新增 `DetectionStatusToText` / `PortProbeStatusToText` / `BoolToText` / `TextToVisibility` 转换器；
+  `IDataMigrationService` 修正源目录尚无数据库时的迁移基线（避免首次启动即改目录时永远切不过去）。
+  本迭代仅落页面与配置项，工具条（S8）、关闭行为（S9）、开机自启（S10）的真实行为待后续交付。
 
 <!-- 下一版本条目在此之后追加 -->

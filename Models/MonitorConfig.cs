@@ -1,9 +1,12 @@
+using System.Text.Json.Serialization;
+
 namespace NetworkMonitorTool.Models
 {
     /// <summary>
     /// 顶层监测配置（DESIGN 第五节配置持久化 / 第四节设置页六组分区）。
     /// 序列化到固定位置的 appsettings.json，缺失字段取默认值（<see cref="CreateDefault"/>）。
-    /// 配置文件含版本号 <see cref="ConfigVersion"/>，后续新增字段做兼容处理。
+    /// 配置文件含版本号 <see cref="ConfigVersion"/>；新增可选字段属向后兼容（旧文件缺字段取默认），
+    /// 无需递增版本，仅在字段语义变更 / 重命名或迁移时递增。
     /// </summary>
     public sealed class MonitorConfig
     {
@@ -22,8 +25,43 @@ namespace NetworkMonitorTool.Models
         /// <summary>d) 存储设置。</summary>
         public StorageConfig Storage { get; set; } = new();
 
+        /// <summary>e) 界面设置（关闭行为 / 工具条开关，S8、S9 消费）。</summary>
+        public InterfaceConfig Interface { get; set; } = new();
+
+        /// <summary>f) 启动设置（开机自启，S10 消费）。</summary>
+        public StartupConfig Startup { get; set; } = new();
+
         /// <summary>恢复默认配置（设置页“恢复默认”按钮，S4）。</summary>
         public static MonitorConfig CreateDefault() => new();
+
+        /// <summary>
+        /// 保留期起始时刻（本地日期零时）：回读历史、界面时间窗与清理均以此为界（DESIGN 第十一节 2）。
+        /// 非法（≤ 0）保留天数回退默认值，避免一次性清空或全量加载。派生值不入配置文件。
+        /// </summary>
+        [JsonIgnore]
+        public DateTime RetentionStart
+        {
+            get
+            {
+                var days = Storage.RetentionDays > 0
+                    ? Storage.RetentionDays
+                    : CreateDefault().Storage.RetentionDays;
+                return DateTime.Now.Date.AddDays(-days);
+            }
+        }
+
+        /// <summary>
+        /// 深拷贝一份（设置页编辑草稿，避免未保存的修改污染 <see cref="Services.IConfigService.Current"/>）。
+        /// </summary>
+        public MonitorConfig Clone() => new()
+        {
+            ConfigVersion = ConfigVersion,
+            Detection = Detection.Clone(),
+            Alert = Alert.Clone(),
+            Storage = Storage.Clone(),
+            Interface = Interface.Clone(),
+            Startup = Startup.Clone(),
+        };
     }
 
     /// <summary>
@@ -55,6 +93,15 @@ namespace NetworkMonitorTool.Models
             TimeoutMs = TimeoutMs,
             PortPolicy = PortPolicy,
         };
+
+        public DetectionConfig Clone() => new()
+        {
+            TargetIp = TargetIp,
+            Port = Port,
+            Interval = Interval,
+            TimeoutMs = TimeoutMs,
+            PortPolicy = PortPolicy,
+        };
     }
 
     /// <summary>告警设置（DESIGN 第八节；S6 告警引擎落地计数与触发逻辑）。</summary>
@@ -71,6 +118,14 @@ namespace NetworkMonitorTool.Models
 
         /// <summary>是否托盘通知告警。</summary>
         public bool TrayNotifyEnabled { get; set; } = true;
+
+        public AlertConfig Clone() => new()
+        {
+            ConsecutiveFailureThreshold = ConsecutiveFailureThreshold,
+            CountPortFailure = CountPortFailure,
+            PopupEnabled = PopupEnabled,
+            TrayNotifyEnabled = TrayNotifyEnabled,
+        };
     }
 
     /// <summary>存储设置（DESIGN 第十一节持久化与保留策略）。</summary>
@@ -84,5 +139,12 @@ namespace NetworkMonitorTool.Models
 
         /// <summary>自定义数据目录；空表示使用默认 %LOCALAPPDATA%\NetworkMonitorTool。</summary>
         public string? DataDirectory { get; set; }
+
+        public StorageConfig Clone() => new()
+        {
+            RetentionDays = RetentionDays,
+            MaxInMemoryRecords = MaxInMemoryRecords,
+            DataDirectory = DataDirectory,
+        };
     }
 }

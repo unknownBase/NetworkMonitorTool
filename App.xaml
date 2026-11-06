@@ -9,6 +9,8 @@
                 <!-- WPF-UI 主题（S1 首日兼容性验证项） -->
                 <ui:ControlsDictionary xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml" />
                 <ui:ThemesDictionary Theme="Light" xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml" />
+                <!-- 共用转换器与 ViewModel → 页面视图映射（S4） -->
+                <ResourceDictionary Source="/NetworkMonitorTool;component/Views/PageTemplates.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>

@@ -36,6 +36,12 @@ namespace NetworkMonitorTool.Services
 
         /// <summary>返回一份默认配置（设置页“恢复默认”）。</summary>
         MonitorConfig CreateDefault();
+
+        /// <summary>
+        /// 配置写盘生效（<see cref="SaveAsync"/> 成功）后触发，
+        /// 供展示配置摘要的页面刷新（仪表盘 / 后续工具条）。
+        /// </summary>
+        event EventHandler<MonitorConfig>? ConfigChanged;
     }
 
     /// <summary>

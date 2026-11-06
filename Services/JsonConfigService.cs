@@ -34,6 +34,8 @@ namespace NetworkMonitorTool.Services
 
         public string ConfigFilePath => AppPaths.ConfigFile;
 
+        public event EventHandler<MonitorConfig>? ConfigChanged;
+
         public MonitorConfig Current
         {
             get
@@ -77,6 +79,9 @@ namespace NetworkMonitorTool.Services
                 var temp = ConfigFilePath + ".tmp";
                 await File.WriteAllTextAsync(temp, json, cancellationToken).ConfigureAwait(false);
                 File.Move(temp, ConfigFilePath, overwrite: true);
+
+                // 界面摘要刷新依此事件（DESIGN 第五节 2「保存后生效」）
+                ConfigChanged?.Invoke(this, config);
                 return true;
             }
             catch (OperationCanceledException)

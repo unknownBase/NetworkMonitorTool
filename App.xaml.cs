@@ -40,8 +40,8 @@ namespace NetworkMonitorTool
                 })
                 .ConfigureServices((_, services) =>
                 {
-                    // ---- 视图模型 ----
-                    services.AddTransient<ShellViewModel>();
+                    // 界面层服务依赖界面线程调度器（后台事件编组用）
+                    services.AddSingleton(Dispatcher.CurrentDispatcher);
 
                     // ---- 窗口 ----
                     services.AddSingleton<MainWindow>();
@@ -53,7 +53,10 @@ namespace NetworkMonitorTool
                     // ---- S2 检测核心（探测 / 编排 / 调度）----
                     services.AddDetectionCore();
 
-                    // ---- 服务占位（S4~S10 逐个实现并注册）----
+                    // ---- S4 页面框架（壳 / 各页视图模型、全局状态与对话框）----
+                    services.AddPresentationCore();
+
+                    // ---- 服务占位（S5~S10 逐个实现并注册）----
                     // services.AddSingleton<IExportService, CsvExportService>();        // S5
                     // services.AddSingleton<IAlertService, AlertService>();             // S6
                     // services.AddSingleton<IWindowModeService, WindowModeService>();   // S8
@@ -67,9 +70,16 @@ namespace NetworkMonitorTool
             // 建表并确保持久化可用；失败时存储层自动降级为仅内存（DESIGN 第十四节 3）
             await _host.Services.GetRequiredService<IStoreService>().InitializeAsync();
 
-            // 主窗口经主机 DI 解析启动
+            // 顶 / 底栏在首个检测完成前也要展示最近记录（DESIGN 第十一节 3）
+            await _host.Services.GetRequiredService<IRuntimeStatusService>()
+                .InitializeAsync(configService.Current.RetentionStart);
+
+            // 主窗口经主机 DI 解析启动；先定位首页再显示，避免空白闪屏
+            var shell = _host.Services.GetRequiredService<ShellViewModel>();
+            await shell.InitializeAsync();
+
             var mainWindow = _host.Services.GetRequiredService<MainWindow>();
-            mainWindow.DataContext = _host.Services.GetRequiredService<ShellViewModel>();
+            mainWindow.DataContext = shell;
             MainWindow = mainWindow;
             mainWindow.Show();
 

@@ -65,7 +65,7 @@ namespace NetworkMonitorTool.Services
                 await _store.SealAsync(cancellationToken).ConfigureAwait(false);
 
                 // 2. 迁移前记录数基线（只读源库）
-                var expected = ReadRecordCounts(from);
+                var baseline = ReadRecordCounts(from);
 
                 // 3. 复制数据库附属文件与日志
                 foreach (var file in EnumerateDataFiles(from))
@@ -78,8 +78,9 @@ namespace NetworkMonitorTool.Services
                 }
 
                 // 4. 验证新库：完整性 + 记录数一致
-                var verified = VerifyDatabase(to, expected, out var verifyMessage);
-                if (!verified)
+                //    源目录尚无数据库（首次启动即改目录 / 已降级未落库）时无内容可验证，
+                //    不能因此判定失败，否则目录永远切不过去。
+                if (baseline.DatabaseExists && !VerifyDatabase(to, baseline, out var verifyMessage))
                 {
                     return await FailAsync(from, to, copied, $"数据验证未通过：{verifyMessage}",
                         reloadConfig: false, cancellationToken).ConfigureAwait(false);
@@ -154,8 +155,11 @@ namespace NetworkMonitorTool.Services
             return MigrationResult.Failed(from, to, reason);
         }
 
+        /// <summary>迁移基线：源目录是否存在数据库文件与两张表的记录数。</summary>
+        private readonly record struct MigrationBaseline(bool DatabaseExists, long Detect, long Alert);
+
         /// <summary>打开目标库做完整性检查，并比对两张表的记录数。</summary>
-        private bool VerifyDatabase(string targetRoot, (long Detect, long Alert) expected, out string message)
+        private bool VerifyDatabase(string targetRoot, MigrationBaseline expected, out string message)
         {
             var dbPath = Path.Combine(targetRoot, Path.GetFileName(AppPaths.DatabaseFile));
             if (!File.Exists(dbPath))
@@ -206,12 +210,12 @@ namespace NetworkMonitorTool.Services
             }
         }
 
-        private (long Detect, long Alert) ReadRecordCounts(string sourceRoot)
+        private MigrationBaseline ReadRecordCounts(string sourceRoot)
         {
-            var dbPath = Path.Combine(sourceRoot, "monitor.db");
+            var dbPath = Path.Combine(sourceRoot, Path.GetFileName(AppPaths.DatabaseFile));
             if (!File.Exists(dbPath))
             {
-                return (0, 0);
+                return new MigrationBaseline(false, 0, 0);
             }
 
             try
@@ -224,13 +228,14 @@ namespace NetworkMonitorTool.Services
 
                 using var conn = new SqliteConnection(builder.ToString());
                 conn.Open();
-                return (CountRows(conn, "detect_record"), CountRows(conn, "alert_record"));
+                return new MigrationBaseline(true,
+                    CountRows(conn, "detect_record"), CountRows(conn, "alert_record"));
             }
             catch (Exception ex)
             {
-                // 源库不可读时以 0 为基线：后续 integrity_check 仍会拦住真正的损坏
-                _logger?.LogWarning(ex, "迁移前读取源数据库记录数失败，完整性检查仍会执行");
-                return (0, 0);
+                // 源库不可读时以“无库”为基线：新库仍会建表，后续回读可暴露真实问题
+                _logger?.LogWarning(ex, "迁移前读取源数据库记录数失败");
+                return new MigrationBaseline(false, 0, 0);
             }
         }
 

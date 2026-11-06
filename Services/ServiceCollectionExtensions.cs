@@ -1,5 +1,6 @@
 using NetworkMonitorTool.Services;
 using NetworkMonitorTool.Services.Probes;
+using NetworkMonitorTool.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -37,6 +38,25 @@ namespace NetworkMonitorTool
             services.TryAddSingleton<ICleanupService, CleanupService>();
             services.TryAddEnumerable(ServiceDescriptor.Singleton<
                 Microsoft.Extensions.Hosting.IHostedService, CleanupHostedService>());
+            return services;
+        }
+
+        /// <summary>
+        /// 注册界面层服务与各页视图模型（S4 页面框架）。
+        /// 页面 VM 均为单例：导航来回切换时保留页面内集合与未保存草稿。
+        /// 仅 WPF 主程序调用，控制台验证工具不触及界面层。
+        /// </summary>
+        public static IServiceCollection AddPresentationCore(this IServiceCollection services)
+        {
+            services.AddSingleton<IRuntimeStatusService, RuntimeStatusService>();
+            services.AddSingleton<IDialogService, WpfDialogService>();
+
+            services.AddSingleton<DashboardViewModel>();
+            services.AddSingleton<LogPageViewModel>();
+            services.AddSingleton<AlertHistoryViewModel>();
+            services.AddSingleton<SettingsViewModel>();
+            services.AddSingleton<AboutViewModel>();
+            services.AddSingleton<ShellViewModel>();
             return services;
         }
     }
