@@ -21,5 +21,14 @@
   `DetectionStatusToBrushConverter` 状态→颜色转换器，`PingProbe` 与 `TcpPortProbe`（错误摘要区分超时/不可达/权限/拒绝），
   `IDetectionService` 单次检测编排（端口策略四分支）与 `ISchedulerService` 周期调度（启动/停止/暂停/恢复，与页面解耦），
   经 `AddDetectionCore` 统一注册；新增控制台验证驱动 `tools/DetectorConsole`。
+- S3 存储与配置：SQLite 分表持久化（`detect_record` / `alert_record`，WAL + 串行写入队列，
+  写库失败降级为仅内存并经 `IStoreService.WriteFailed` 上报，不阻断调度），
+  `MonitorConfig` / `DetectionConfig` / `AlertConfig` / `StorageConfig` 模型与 `AlertRecord` 告警记录模型（含配置版本号），
+  `IConfigService`/`JsonConfigService` 固定路径 `appsettings.json` 读写（camelCase、临时文件后替换、缺失字段取默认、
+  保存前校验 IP/端口/间隔/超时/阈值/保留天数/内存条数/数据目录），
+  数据目录解析改由 `IConfigService` 统一接管（移除 `AppPaths` 内的临时 JSON 解析），
+  `IDataMigrationService` 安全切换数据目录（数据库含 -wal/-shm 与日志复制、integrity_check 与记录数验证、
+  失败清理副本并保持原目录），`ICleanupService` + `CleanupHostedService` 按保留天数启动清理与每小时定时清理；
+  `DetectorConsole` 扩展 `--load-only` / `--seed` / `--clear` / `--save-config` / `--migrate` / `--data-dir` 以验证 S3 收口。
 
 <!-- 下一版本条目在此之后追加 -->

@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace NetworkMonitorTool.Models
 {
     /// <summary>
@@ -12,7 +14,8 @@ namespace NetworkMonitorTool.Models
             return ticks > 0 ? TimeSpan.FromSeconds(ticks) : TimeSpan.Zero;
         }
 
-        /// <summary>间隔必须大于 0（DESIGN 第五节保存校验）。</summary>
+        /// <summary>间隔必须大于 0（DESIGN 第五节保存校验）；派生值不入配置文件。</summary>
+        [JsonIgnore]
         public bool IsValid => ToTimeSpan() > TimeSpan.Zero;
 
         public override string ToString() => $"{Hours:00}:{Minutes:00}:{Seconds:00}";

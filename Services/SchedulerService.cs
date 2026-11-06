@@ -6,10 +6,12 @@ namespace NetworkMonitorTool.Services
     /// <summary>
     /// 基于后台循环的调度实现：单循环串行触发检测，暂停用可等待门控阻断，
     /// 停止用取消令牌收口。事件在后台线程回调，订阅方（UI）自行编组到界面线程。
+    /// 每条记录产生后先写入持久化存储再广播（DESIGN 第六节 2），写库失败降级不中断调度。
     /// </summary>
     public sealed class SchedulerService : ISchedulerService
     {
         private readonly IDetectionService _detection;
+        private readonly IStoreService _store;
         private readonly ILogger<SchedulerService>? _logger;
 
         private readonly object _sync = new();
@@ -24,9 +26,13 @@ namespace NetworkMonitorTool.Services
         private DetectionOptions? _options;
         private DetectionInterval _interval;
 
-        public SchedulerService(IDetectionService detection, ILogger<SchedulerService>? logger = null)
+        public SchedulerService(
+            IDetectionService detection,
+            IStoreService store,
+            ILogger<SchedulerService>? logger = null)
         {
             _detection = detection;
+            _store = store;
             _logger = logger;
             _resumeSignal.SetResult(true); // 初始为非暂停
             State = SchedulerState.Stopped;
@@ -81,6 +87,7 @@ namespace NetworkMonitorTool.Services
                     await WaitForResumeAsync(ct).ConfigureAwait(false);
 
                     var record = await _detection.DetectOnceAsync(options, ct).ConfigureAwait(false);
+                    await PersistAsync(record, ct).ConfigureAwait(false);
                     DetectionCompleted?.Invoke(this, record);
 
                     await Task.Delay(period, ct).ConfigureAwait(false);
@@ -175,6 +182,29 @@ namespace NetworkMonitorTool.Services
             lock (_sync)
             {
                 SetState(SchedulerState.Stopped);
+            }
+        }
+
+        /// <summary>
+        /// 写入持久化存储。失败已在存储层降级并触发 <see cref="IStoreService.WriteFailed"/>，
+        /// 此处只记日志，绝不影响后续调度（DESIGN 第十四节 3）。
+        /// </summary>
+        private async Task PersistAsync(DetectionRecord record, CancellationToken ct)
+        {
+            try
+            {
+                if (!await _store.AppendDetectionRecordAsync(record, ct).ConfigureAwait(false))
+                {
+                    _logger?.LogWarning("检测记录未入库，已降级为仅内存（{Time:HH:mm:ss}）", record.Timestamp);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "写入检测记录时发生未预期异常，调度继续");
             }
         }
 

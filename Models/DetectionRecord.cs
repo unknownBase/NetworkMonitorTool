@@ -29,5 +29,11 @@ namespace NetworkMonitorTool.Models
 
         /// <summary>错误摘要（区分超时 / 不可达 / 权限等），成功时为 null。</summary>
         public string? ErrorSummary { get; init; }
+
+        /// <summary>
+        /// 本次检测后的连续失败计数（成功时为 0），由 S6 告警引擎填写并持久化，
+        /// 供冷启动延续读取（DESIGN 第八节 3）。S2/S3 阶段默认 0。
+        /// </summary>
+        public int ConsecutiveFailures { get; init; }
     }
 }

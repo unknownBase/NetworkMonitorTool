@@ -25,6 +25,11 @@ namespace NetworkMonitorTool
             TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
             AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
 
+            // S3：先加载固定位置的 appsettings.json 确定数据目录，
+            // 日志与数据库路径均依赖它，故该实例在主机构建前创建并注册复用。
+            var configService = new JsonConfigService();
+            configService.Load();
+
             _host = Host.CreateDefaultBuilder(e.Args)
                 .UseContentRoot(AppContext.BaseDirectory)
                 .ConfigureLogging(logging =>
@@ -41,13 +46,14 @@ namespace NetworkMonitorTool
                     // ---- 窗口 ----
                     services.AddSingleton<MainWindow>();
 
+                    // ---- S3 配置与存储（复用启动阶段已加载的配置实例）----
+                    services.AddSingleton<IConfigService>(configService);
+                    services.AddStorageCore();
+
                     // ---- S2 检测核心（探测 / 编排 / 调度）----
                     services.AddDetectionCore();
 
-                    // ---- 服务占位（S3~S10 逐个实现并注册）----
-                    // services.AddSingleton<IStoreService, SqliteStoreService>();       // S3
-                    // services.AddSingleton<IConfigService, JsonConfigService>();       // S3
-                    // services.AddSingleton<ICleanupService, CleanupService>();         // S3
+                    // ---- 服务占位（S4~S10 逐个实现并注册）----
                     // services.AddSingleton<IExportService, CsvExportService>();        // S5
                     // services.AddSingleton<IAlertService, AlertService>();             // S6
                     // services.AddSingleton<IWindowModeService, WindowModeService>();   // S8
@@ -57,6 +63,9 @@ namespace NetworkMonitorTool
                 .Build();
 
             await _host.StartAsync();
+
+            // 建表并确保持久化可用；失败时存储层自动降级为仅内存（DESIGN 第十四节 3）
+            await _host.Services.GetRequiredService<IStoreService>().InitializeAsync();
 
             // 主窗口经主机 DI 解析启动
             var mainWindow = _host.Services.GetRequiredService<MainWindow>();

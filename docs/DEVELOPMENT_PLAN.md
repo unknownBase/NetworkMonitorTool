@@ -11,7 +11,7 @@
 | --- | --- | --- | --- | --- |
 | S1 | 工程骨架 | v0.1 | 分包、NuGet、泛型主机、DI、全局异常 | `dotnet build` 通过，主窗口经主机启动 |
 | S2 | 检测核心 | v0.1 | 检测服务、调度服务、模型、转换器 | 控制台可驱动一轮周期检测并输出结果 |
-| S3 | 存储与配置 | v0.1 | SQLite 持久化、appsettings 读写、清理雏形 | 重启后记录与配置不丢 |
+| S3 | 存储与配置 | v0.1 | SQLite 持久化、appsettings 读写、清理雏形 | 重启后记录与配置不丢 ✅ |
 | S4 | 页面框架 | v0.1 | 主窗口壳、导航、仪表盘 / 日志 / 设置 / 关于 | 五页可导航，仪表盘展示实时状态 |
 | S5 | 日志与导出 | v0.1 | 筛选排序、CSV 导出、清空、内存条数限制 | **v0.1 MVP 演示：完整监测闭环** |
 | S6 | 告警引擎 | v0.2 | 连续失败计数、触发去重、冷启动延续 | 断网场景达到阈值恰好告警一次 |
@@ -51,12 +51,24 @@
 
 ### S3 存储与配置
 
-- [ ] SQLite 建表：`detect_record`、`alert_record`（分表）
-- [ ] `IStoreService`：逐条写入、按保留期加载、清空；写入失败降级为仅内存 + 界面提示
-- [ ] `MonitorConfig` 等模型 + 配置版本号；`%LOCALAPPDATA%\NetworkMonitorTool\appsettings.json` 读写，缺失字段取默认
-- [ ] 数据目录配置项 `storage.dataDirectory`：由 `IConfigService` 统一接管读取（替换 AppPaths 内的临时解析），校验合法性（绝对路径、可写、磁盘空间）
-- [ ] `IDataMigrationService`：保存并切换数据目录时，将数据库（含 -shm/-wal）、日志复制到新目录，验证成功后重写配置并切换；失败保持原目录并提示，不丢数据
-- [ ] `ICleanupService`：按保留天数删除过期记录（启动一次 + 每小时）
+- [x] SQLite 建表：`detect_record`、`alert_record`（分表）
+- [x] `IStoreService`：逐条写入、按保留期加载、清空；写入失败降级为仅内存 + 界面提示
+      （降级经 `IStoreService.WriteFailed` 事件上报，界面提示条随 S4/S5 页面接入）
+- [x] `MonitorConfig` 等模型 + 配置版本号；`%LOCALAPPDATA%\NetworkMonitorTool\appsettings.json` 读写，缺失字段取默认
+- [x] 数据目录配置项 `storage.dataDirectory`：由 `IConfigService` 统一接管读取（已移除 `AppPaths` 内的临时解析），
+      校验合法性（绝对路径、盘符就绪、可写探测、剩余空间），不合法回退默认目录
+- [x] `IDataMigrationService`：保存并切换数据目录时，将数据库（含 -shm/-wal）、日志复制到新目录，验证（integrity_check +
+      记录数比对）成功后重写配置并切换；失败清理副本、保持原目录并提示，不丢数据
+- [x] `ICleanupService`：按保留天数删除过期记录（`CleanupHostedService` 启动一次 + 每小时）
+
+> S3 收口验证（`tools/DetectorConsole`，均通过）：
+> 1. 跨进程不丢记录：一轮运行入库 N 条后退出，`--load-only` 可回读同样条数。
+> 2. 配置兼容：仅含部分字段的手写 appsettings.json 读入后缺失字段全部取默认；写回后版本号与默认目录语义正确。
+> 3. 校验拦截：非法 IP / 越界端口不写入配置（返回错误项列表）。
+> 4. 目录迁移：`--migrate <新目录>` 成功切换且记录/告警在新目录可查；`--migrate Q:\...` 磁盘未就绪时失败回退，原目录数据仍可回读。
+> 5. 分表与清理：`--seed` 写入超期检测样本 + 告警样本，保留期窗口回读正确过滤，按保留天数清理只删超期记录。
+> 6. 降级：数据库不可写（monitor.db 被目录占用）时记录仅落内存并触发降级提示，调度循环不中断。
+> 7. 主程序启动：Release 构建下 WPF 主窗口正常启动，启动即执行一次清理并写日志到生效数据目录。
 
 ### S4 页面框架
 
