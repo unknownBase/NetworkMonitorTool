@@ -46,6 +46,22 @@ namespace NetworkMonitorTool.Services
             return confirmed == true ? dialog.FolderName : null;
         }
 
+        public string? PickCsvSaveFile(string defaultFileName)
+        {
+            var dialog = new SaveFileDialog
+            {
+                Title = "导出 CSV",
+                Filter = "CSV 文件 (*.csv)|*.csv",
+                DefaultExt = ".csv",
+                AddExtension = true,
+                FileName = defaultFileName,
+                OverwritePrompt = true,
+            };
+
+            var confirmed = Owner is { } owner ? dialog.ShowDialog(owner) : dialog.ShowDialog();
+            return confirmed == true ? dialog.FileName : null;
+        }
+
         private static MessageBoxResult Show(
             string message, string title, MessageBoxButton buttons, MessageBoxImage image,
             MessageBoxResult defaultResult = MessageBoxResult.OK)

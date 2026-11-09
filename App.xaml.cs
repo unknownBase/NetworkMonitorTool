@@ -56,8 +56,7 @@ namespace NetworkMonitorTool
                     // ---- S4 页面框架（壳 / 各页视图模型、全局状态与对话框）----
                     services.AddPresentationCore();
 
-                    // ---- 服务占位（S5~S10 逐个实现并注册）----
-                    // services.AddSingleton<IExportService, CsvExportService>();        // S5
+                    // ---- 服务占位（S6~S10 逐个实现并注册；导出服务已随 AddDetectionCore 注册，S5）----
                     // services.AddSingleton<IAlertService, AlertService>();             // S6
                     // services.AddSingleton<IWindowModeService, WindowModeService>();   // S8
                     // services.AddSingleton<ISingleInstanceService, SingleInstanceService>(); // S10

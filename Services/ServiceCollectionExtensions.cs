@@ -23,6 +23,7 @@ namespace NetworkMonitorTool
             services.TryAddSingleton<ITcpPortProbe, TcpPortProbe>();
             services.TryAddSingleton<IDetectionService, DetectionService>();
             services.TryAddSingleton<ISchedulerService, SchedulerService>();
+            services.TryAddSingleton<IExportService, CsvExportService>();
             return services;
         }
 

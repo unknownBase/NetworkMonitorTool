@@ -39,5 +39,10 @@ namespace NetworkMonitorTool.Services
         /// 选择文件夹；返回所选绝对路径，用户取消时返回 null。
         /// </summary>
         string? PickFolder(string? initialDirectory = null);
+
+        /// <summary>
+        /// CSV 保存对话框（导出用，DESIGN 第十二节 3）；返回所选文件路径，用户取消时返回 null。
+        /// </summary>
+        string? PickCsvSaveFile(string defaultFileName);
     }
 }

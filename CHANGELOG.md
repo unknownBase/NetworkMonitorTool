@@ -44,5 +44,12 @@
   新增 `DetectionStatusToText` / `PortProbeStatusToText` / `BoolToText` / `TextToVisibility` 转换器；
   `IDataMigrationService` 修正源目录尚无数据库时的迁移基线（避免首次启动即改目录时永远切不过去）。
   本迭代仅落页面与配置项，工具条（S8）、关闭行为（S9）、开机自启（S10）的真实行为待后续交付。
+- S5 日志与导出（v0.1 MVP 收口）：日志页接入状态筛选（全部 / 成功 / Ping 失败 / 端口失败 / 异常）与
+  时间范围筛选（含当日，起止颠倒行内提示），表格绑定 `ICollectionView` 默认时间降序、列头可切换排序，
+  加载按内存最大条数取最近 N 条（数据库仍保留完整保留期数据），筛选条数实时统计；
+  `IExportService`/`CsvExportService` 导出当前筛选结果（UTF-8 带 BOM、RFC 4180 字段转义、
+  默认文件名含目标 IP 与时间戳，状态文案复用界面转换器保证一致），`IDialogService` 新增 CSV 保存对话框，
+  完成后提示条数与路径、失败提示原因；清空经二次确认后同清界面集合与数据库；新增打开日志目录操作；
+  `DetectorConsole` 扩展 `--export` 验证 BOM / 转义 / 条数。设置保存重启调度与数据目录迁移联动沿用 S4 落地路径。
 
 <!-- 下一版本条目在此之后追加 -->

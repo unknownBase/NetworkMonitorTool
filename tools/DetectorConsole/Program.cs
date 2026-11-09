@@ -14,6 +14,7 @@ using Microsoft.Extensions.Logging;
 //   DetectorConsole --migrate D:\Temp\NmtData2 --save-config           （迁移数据到新目录后切换）
 //   DetectorConsole --load-only                                        （不检测，仅回读库中记录，验证重启不丢数据）
 //   DetectorConsole --load-only --days 1                               （按保留期回读并执行一次清理）
+//   DetectorConsole --export D:\Temp\log.csv                           （S5：导出保留期记录为 CSV 并验证 BOM/转义）
 
 var opts = ParseArgs(args);
 
@@ -38,7 +39,7 @@ if (opts.OverridesDetection)
 }
 
 // 数据目录：命令行覆盖（仅本次运行生效；带 --save-config 时才写入配置，
-// 正式链路由设置页保存 + IDataMigrationService 迁移，S5 联动）
+// 正式链路由设置页保存 + IDataMigrationService 迁移，S4/S5 已落地）
 if (!string.IsNullOrWhiteSpace(opts.DataDirectory))
 {
     config.Storage.DataDirectory = Path.GetFullPath(opts.DataDirectory);
@@ -85,7 +86,7 @@ if (opts.Migrate)
 
 await store.InitializeAsync();
 
-Console.WriteLine("== NetworkMonitorTool 控制台验证（S2 检测核心 + S3 存储与配置）==");
+Console.WriteLine("== NetworkMonitorTool 控制台验证（S2 检测核心 + S3 存储与配置 + S5 导出）==");
 Console.WriteLine($"配置文件: {configService.ConfigFilePath}");
 Console.WriteLine($"数据目录: {AppPaths.Root}");
 Console.WriteLine($"数据库  : {AppPaths.DatabaseFile}（持久化 {(store.IsPersistent ? "可用" : "不可用，已降级为仅内存")}）");
@@ -143,9 +144,35 @@ Console.WriteLine($"回读告警记录（分表 alert_record）：{alerts.Count}
             + $" 送达={alerts[^1].DeliveryMethods}"
         : string.Empty));
 
+if (opts.ExportTo is { Length: > 0 } exportTo)
+{
+    // S5 收口验证：导出保留期记录（日志页“当前筛选结果”的全集等价物）+ BOM 与字段转义检查
+    var export = provider.GetRequiredService<IExportService>();
+    var exported = await export.ExportDetectionRecordsAsync(before, exportTo);
+    var bytes = await File.ReadAllBytesAsync(exportTo);
+    var hasBom = bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF;
+    Console.WriteLine($"导出 {exported} 条 → {exportTo}（UTF-8 BOM {(hasBom ? "有 ✓" : "缺失 ✗")}）");
+    Console.WriteLine($"默认文件名示例: {export.BuildDefaultFileName(config.Detection.TargetIp)}");
+
+    var escapePath = Path.ChangeExtension(exportTo, ".escape.csv");
+    var tricky = new DetectionRecord
+    {
+        Timestamp = DateTime.Now,
+        TargetIp = config.Detection.TargetIp,
+        PingSuccess = false,
+        Status = DetectionStatus.Error,
+        ErrorSummary = "a,\"b\"\nc",
+    };
+    await export.ExportDetectionRecordsAsync(new[] { tricky }, escapePath);
+    var escaped = (await File.ReadAllTextAsync(escapePath)).Contains("\"a,\"\"b\"\"\nc\"");
+    Console.WriteLine($"字段转义验证（逗号/引号/换行）: {(escaped ? "✓" : "✗")} → {escapePath}");
+    Console.WriteLine("--export 模式，不执行检测。");
+    return hasBom && escaped && exported == before.Count ? 0 : 2;
+}
+
 if (opts.Clear)
 {
-    // 日志页“清空”的存储层等价物（S5 接入二次确认 + 界面集合）
+    // 日志页“清空”的存储层等价物（界面侧二次确认 + 集合清空已在 S5 接入）
     var clearedDetect = await store.ClearDetectionRecordsAsync();
     var clearedAlert = await store.ClearAlertRecordsAsync();
     Console.WriteLine($"已清空：检测 {clearedDetect} 条、告警 {clearedAlert} 条，"
@@ -268,6 +295,7 @@ static RunOptions ParseArgs(string[] args)
             case "--save-config": o.SaveConfig = true; break;
             case "--seed": o.Seed = true; break;
             case "--load-only": o.LoadOnly = true; break;
+            case "--export": o.ExportTo = Next(); break;
             case "--clear": o.Clear = true; break;
             case "--verbose": o.Verbose = true; break;
         }
@@ -310,6 +338,9 @@ internal sealed class RunOptions
 
     /// <summary>清空两张记录表后退出（验证 IStoreService 清空能力）。</summary>
     public bool Clear { get; set; }
+
+    /// <summary>导出保留期检测记录到该 CSV 路径后退出（S5 导出验证）。</summary>
+    public string? ExportTo { get; set; }
 
     public bool Verbose { get; set; }
 }
