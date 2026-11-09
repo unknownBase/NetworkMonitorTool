@@ -6,7 +6,7 @@ namespace NetworkMonitorTool.ViewModels
 {
     /// <summary>
     /// 告警历史页视图模型（DESIGN 第四节 3 的框架部分）：展示 alert_record 分表中的历史告警。
-    /// 告警产生（S6）与弹窗 / 托盘通知（S7）、时间筛选与清空在后续迭代补全。
+    /// 告警由 S6 引擎触发写入；弹窗 / 托盘通知（S7）、时间筛选与清空在后续迭代补全。
     /// </summary>
     public sealed partial class AlertHistoryViewModel : PageViewModelBase
     {
@@ -30,7 +30,7 @@ namespace NetworkMonitorTool.ViewModels
         public string RetentionHint { get; private set; } = string.Empty;
 
         public string PendingFeatureHint { get; } =
-            "连续失败计数与告警触发在 S6 交付，弹窗 / 托盘通知与筛选、清空在 S7 交付";
+            "告警弹窗 / 托盘通知与本页筛选、清空在 S7 交付";
 
         public override async Task ActivateAsync()
         {

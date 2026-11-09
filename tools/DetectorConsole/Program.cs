@@ -15,6 +15,9 @@ using Microsoft.Extensions.Logging;
 //   DetectorConsole --load-only                                        （不检测，仅回读库中记录，验证重启不丢数据）
 //   DetectorConsole --load-only --days 1                               （按保留期回读并执行一次清理）
 //   DetectorConsole --export D:\Temp\log.csv                           （S5：导出保留期记录为 CSV 并验证 BOM/转义）
+//   DetectorConsole --ip 10.255.255.1 --timeout 1500 --cycles 5        （S6：断网达阈值恰好告警一次）
+//   DetectorConsole --threshold 2 --count-port off --port 9 --policy Always --cycles 3
+//                                                                      （S6：阈值与端口失败计入开关覆盖，仅本次运行）
 
 var opts = ParseArgs(args);
 
@@ -36,6 +39,16 @@ if (opts.OverridesDetection)
     config.Detection.TimeoutMs = opts.TimeoutMs;
     config.Detection.PortPolicy = opts.PortPolicy;
     config.Detection.Interval = opts.Interval;
+}
+
+// 告警参数覆盖（仅本次运行生效，不写配置）：验证阈值与端口失败计入开关
+if (opts.ThresholdOverride is int threshold)
+{
+    config.Alert.ConsecutiveFailureThreshold = threshold;
+}
+if (opts.CountPortOverride is bool countPort)
+{
+    config.Alert.CountPortFailure = countPort;
 }
 
 // 数据目录：命令行覆盖（仅本次运行生效；带 --save-config 时才写入配置，
@@ -86,7 +99,14 @@ if (opts.Migrate)
 
 await store.InitializeAsync();
 
-Console.WriteLine("== NetworkMonitorTool 控制台验证（S2 检测核心 + S3 存储与配置 + S5 导出）==");
+// S6：冷启动延续（与应用启动同序），并打印告警触发供回归核对
+var alertEngine = provider.GetRequiredService<IAlertService>();
+await alertEngine.InitializeAsync();
+alertEngine.AlertTriggered += (_, a) => Console.WriteLine(
+    $"  ! 告警触发 [{a.Timestamp:HH:mm:ss}] {a.TargetIp}:{a.Port?.ToString() ?? "-"}"
+    + $" 连续失败={a.ConsecutiveFailures} 送达={a.DeliveryMethods} 原因={a.ErrorSummary ?? "无"}");
+
+Console.WriteLine("== NetworkMonitorTool 控制台验证（S2 检测核心 + S3 存储与配置 + S5 导出 + S6 告警）==");
 Console.WriteLine($"配置文件: {configService.ConfigFilePath}");
 Console.WriteLine($"数据目录: {AppPaths.Root}");
 Console.WriteLine($"数据库  : {AppPaths.DatabaseFile}（持久化 {(store.IsPersistent ? "可用" : "不可用，已降级为仅内存")}）");
@@ -240,6 +260,9 @@ Console.WriteLine(new string('-', 72));
 Console.WriteLine($"共完成 {completed} 轮检测，调度状态: {scheduler.State}，写库降级 {degraded} 次。");
 Console.WriteLine($"库中保留期记录: 运行前 {before.Count} 条 → 运行后 {after.Count} 条"
     + $"（新增 {after.Count - before.Count} 条，重启后可回读即 S3 收口标准）");
+var alertsAfter = await store.LoadAlertRecordsAsync(since);
+Console.WriteLine($"告警引擎: 连续失败={alertEngine.ConsecutiveFailures} 已告警={alertEngine.IsAlerting}；"
+    + $"告警历史 {alerts.Count} → {alertsAfter.Count} 条（新增 {alertsAfter.Count - alerts.Count} 条）");
 
 // 收口验证：持久化可用时本次记录必须全部入库；已降级时只要检测不中断且触发了降级提示即为预期
 var persisted = after.Count - before.Count;
@@ -260,7 +283,7 @@ static void PrintRecord(DetectionRecord r)
     };
     Console.WriteLine(
         $"[{r.Timestamp:HH:mm:ss.fff}] {r.TargetIp}({r.Port?.ToString() ?? "-"}) " +
-        $"Ping={ping} | 端口={port} | 状态={r.Status}" +
+        $"Ping={ping} | 端口={port} | 状态={r.Status} | 连续失败={r.ConsecutiveFailures}" +
         (r.ErrorSummary is null ? string.Empty : $" | 原因: {r.ErrorSummary}"));
 }
 
@@ -296,6 +319,12 @@ static RunOptions ParseArgs(string[] args)
             case "--seed": o.Seed = true; break;
             case "--load-only": o.LoadOnly = true; break;
             case "--export": o.ExportTo = Next(); break;
+            case "--threshold": if (int.TryParse(Next(), out var th) && th > 0) o.ThresholdOverride = th; break;
+            case "--count-port":
+                var cp = Next();
+                if (cp is "on" or "true") o.CountPortOverride = true;
+                else if (cp is "off" or "false") o.CountPortOverride = false;
+                break;
             case "--clear": o.Clear = true; break;
             case "--verbose": o.Verbose = true; break;
         }
@@ -341,6 +370,12 @@ internal sealed class RunOptions
 
     /// <summary>导出保留期检测记录到该 CSV 路径后退出（S5 导出验证）。</summary>
     public string? ExportTo { get; set; }
+
+    /// <summary>告警阈值覆盖（仅本次运行，S6 验证）。</summary>
+    public int? ThresholdOverride { get; set; }
+
+    /// <summary>端口失败计入开关覆盖（仅本次运行，S6 验证）。</summary>
+    public bool? CountPortOverride { get; set; }
 
     public bool Verbose { get; set; }
 }

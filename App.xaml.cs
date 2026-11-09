@@ -56,8 +56,7 @@ namespace NetworkMonitorTool
                     // ---- S4 页面框架（壳 / 各页视图模型、全局状态与对话框）----
                     services.AddPresentationCore();
 
-                    // ---- 服务占位（S6~S10 逐个实现并注册；导出服务已随 AddDetectionCore 注册，S5）----
-                    // services.AddSingleton<IAlertService, AlertService>();             // S6
+                    // ---- 服务占位（S8~S10 逐个实现并注册；导出 S5、告警引擎 S6 已随 AddDetectionCore 注册）----
                     // services.AddSingleton<IWindowModeService, WindowModeService>();   // S8
                     // services.AddSingleton<ISingleInstanceService, SingleInstanceService>(); // S10
                     // services.AddSingleton<IAutoStartService, AutoStartService>();     // S10
@@ -68,6 +67,9 @@ namespace NetworkMonitorTool
 
             // 建表并确保持久化可用；失败时存储层自动降级为仅内存（DESIGN 第十四节 3）
             await _host.Services.GetRequiredService<IStoreService>().InitializeAsync();
+
+            // 冷启动延续：读取最近连续失败次数（DESIGN 第八节 3），调度启动时按规则处理
+            await _host.Services.GetRequiredService<IAlertService>().InitializeAsync();
 
             // 顶 / 底栏在首个检测完成前也要展示最近记录（DESIGN 第十一节 3）
             await _host.Services.GetRequiredService<IRuntimeStatusService>()

@@ -6,11 +6,13 @@ namespace NetworkMonitorTool.Services
     /// <summary>
     /// 基于后台循环的调度实现：单循环串行触发检测，暂停用可等待门控阻断，
     /// 停止用取消令牌收口。事件在后台线程回调，订阅方（UI）自行编组到界面线程。
-    /// 每条记录产生后先写入持久化存储再广播（DESIGN 第六节 2），写库失败降级不中断调度。
+    /// 每条记录产生后先交告警引擎填写连续失败计数，再写入持久化存储后广播（DESIGN 第六节 2），
+    /// 写库失败降级不中断调度。
     /// </summary>
     public sealed class SchedulerService : ISchedulerService
     {
         private readonly IDetectionService _detection;
+        private readonly IAlertService _alerts;
         private readonly IStoreService _store;
         private readonly ILogger<SchedulerService>? _logger;
 
@@ -28,10 +30,12 @@ namespace NetworkMonitorTool.Services
 
         public SchedulerService(
             IDetectionService detection,
+            IAlertService alerts,
             IStoreService store,
             ILogger<SchedulerService>? logger = null)
         {
             _detection = detection;
+            _alerts = alerts;
             _store = store;
             _logger = logger;
             _resumeSignal.SetResult(true); // 初始为非暂停
@@ -44,7 +48,7 @@ namespace NetworkMonitorTool.Services
 
         public event EventHandler<SchedulerState>? StateChanged;
 
-        public Task StartAsync(
+        public async Task StartAsync(
             DetectionOptions options, DetectionInterval interval, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(options);
@@ -57,7 +61,7 @@ namespace NetworkMonitorTool.Services
             {
                 if (State != SchedulerState.Stopped)
                 {
-                    return Task.CompletedTask; // 已在运行 / 暂停，忽略重复启动
+                    return; // 已在运行 / 暂停，忽略重复启动
                 }
 
                 _options = options;
@@ -72,7 +76,8 @@ namespace NetworkMonitorTool.Services
                 SetState(SchedulerState.Running);
             }
 
-            return Task.CompletedTask;
+            // 冷启动计数已达阈值时按规则立即告警（DESIGN 第六节 1、第八节 3）
+            await _alerts.OnMonitoringStartedAsync(cancellationToken).ConfigureAwait(false);
         }
 
         private async Task RunLoopAsync(CancellationToken ct)
@@ -87,6 +92,7 @@ namespace NetworkMonitorTool.Services
                     await WaitForResumeAsync(ct).ConfigureAwait(false);
 
                     var record = await _detection.DetectOnceAsync(options, ct).ConfigureAwait(false);
+                    record = await _alerts.EvaluateAsync(record, ct).ConfigureAwait(false);
                     await PersistAsync(record, ct).ConfigureAwait(false);
                     DetectionCompleted?.Invoke(this, record);
 

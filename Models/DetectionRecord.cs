@@ -31,9 +31,23 @@ namespace NetworkMonitorTool.Models
         public string? ErrorSummary { get; init; }
 
         /// <summary>
-        /// 本次检测后的连续失败计数（成功时为 0），由 S6 告警引擎填写并持久化，
-        /// 供冷启动延续读取（DESIGN 第八节 3）。S2/S3 阶段默认 0。
+        /// 本次检测后的连续失败计数（成功时为 0），由告警引擎填写并持久化，
+        /// 供冷启动延续读取（DESIGN 第八节 3）。
         /// </summary>
         public int ConsecutiveFailures { get; init; }
+
+        /// <summary>返回填写连续失败计数后的副本（记录其余字段不可变）。</summary>
+        public DetectionRecord WithConsecutiveFailures(int count) => new()
+        {
+            Timestamp = Timestamp,
+            TargetIp = TargetIp,
+            Port = Port,
+            PingSuccess = PingSuccess,
+            LatencyMs = LatencyMs,
+            PortResult = PortResult,
+            Status = Status,
+            ErrorSummary = ErrorSummary,
+            ConsecutiveFailures = count,
+        };
     }
 }
