@@ -14,6 +14,7 @@ namespace NetworkMonitorTool.Services
     public sealed partial class RuntimeStatusService : ObservableObject, IRuntimeStatusService
     {
         private readonly ISchedulerService _scheduler;
+        private readonly IAlertService _alerts;
         private readonly IStoreService _store;
         private readonly Dispatcher _dispatcher;
 
@@ -27,6 +28,9 @@ namespace NetworkMonitorTool.Services
         private int _consecutiveFailures;
 
         [ObservableProperty]
+        private bool _isAlerting;
+
+        [ObservableProperty]
         private bool _isPersistent = true;
 
         [ObservableProperty]
@@ -34,10 +38,12 @@ namespace NetworkMonitorTool.Services
 
         public RuntimeStatusService(
             ISchedulerService scheduler,
+            IAlertService alerts,
             IStoreService store,
             Dispatcher dispatcher)
         {
             _scheduler = scheduler;
+            _alerts = alerts;
             _store = store;
             _dispatcher = dispatcher;
 
@@ -46,6 +52,7 @@ namespace NetworkMonitorTool.Services
 
             scheduler.StateChanged += HandleSchedulerStateChanged;
             scheduler.DetectionCompleted += HandleDetectionCompleted;
+            alerts.AlertTriggered += HandleAlertTriggered;
             store.WriteFailed += HandleWriteFailed;
         }
 
@@ -53,7 +60,9 @@ namespace NetworkMonitorTool.Services
 
         public DetectionStatus Status => State == SchedulerState.Paused
             ? DetectionStatus.Paused
-            : LastRecord?.Status ?? DetectionStatus.Success;
+            : IsAlerting
+                ? DetectionStatus.Alerting
+                : LastRecord?.Status ?? DetectionStatus.Success;
 
         public string StatusText => State switch
         {
@@ -102,6 +111,8 @@ namespace NetworkMonitorTool.Services
 
         partial void OnConsecutiveFailuresChanged(int value) => NotifyPresentation();
 
+        partial void OnIsAlertingChanged(bool value) => NotifyPresentation();
+
         partial void OnIsPersistentChanged(bool value)
         {
             if (value)
@@ -120,6 +131,7 @@ namespace NetworkMonitorTool.Services
         {
             LastRecord = record;
             ConsecutiveFailures = record.ConsecutiveFailures;
+            IsAlerting = _alerts.IsAlerting;
 
             // 写库成功即代表持久化可用（含降级后的自动恢复）
             if (_store.IsPersistent)
@@ -129,6 +141,8 @@ namespace NetworkMonitorTool.Services
 
             RecordReceived?.Invoke(this, record);
         });
+
+        private void HandleAlertTriggered(object? sender, AlertRecord record) => OnUi(() => IsAlerting = true);
 
         private void HandleWriteFailed(object? sender, StoreWriteFailedEventArgs e) => OnUi(() =>
         {

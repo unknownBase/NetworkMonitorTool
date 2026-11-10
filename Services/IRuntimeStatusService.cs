@@ -15,7 +15,7 @@ namespace NetworkMonitorTool.Services
         /// <summary>调度状态（未运行 / 运行中 / 暂停中）。</summary>
         SchedulerState State { get; }
 
-        /// <summary>界面状态：暂停中优先于最近检测结果（DESIGN 第十节，告警中由 S6 接入）。</summary>
+        /// <summary>界面状态：暂停中优先于告警中，告警中优先于最近检测结果（DESIGN 第十节）。</summary>
         DetectionStatus Status { get; }
 
         /// <summary>状态文案，含未运行。</summary>
@@ -38,6 +38,9 @@ namespace NetworkMonitorTool.Services
 
         /// <summary>最近一次检测后的连续失败次数（S6 起由告警引擎填写）。</summary>
         int ConsecutiveFailures { get; }
+
+        /// <summary>是否处于「已告警」状态（S7 接入，恢复成功后重置）。</summary>
+        bool IsAlerting { get; }
 
         /// <summary>持久化是否可用；false 表示已降级为仅内存（DESIGN 第十四节 3）。</summary>
         bool IsPersistent { get; }

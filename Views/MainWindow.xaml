@@ -27,6 +27,10 @@
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <!-- 告警中醒目标记（DESIGN 第十节），与仪表盘红色横幅含义一致 -->
+                    <TextBlock Text="!" Foreground="#C42B1C" FontWeight="Bold" FontSize="16"
+                               Margin="0,0,6,0" VerticalAlignment="Center"
+                               Visibility="{Binding Status.IsAlerting, Converter={StaticResource BoolToVisibilityConverter}}" />
                     <Ellipse Width="12" Height="12" Fill="{Binding Status.StatusBrush}" VerticalAlignment="Center" />
                     <TextBlock Text="{Binding Status.StatusText}" Margin="6,0,0,0"
                                FontWeight="SemiBold" VerticalAlignment="Center" />

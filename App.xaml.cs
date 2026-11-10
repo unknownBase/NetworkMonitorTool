@@ -79,6 +79,9 @@ namespace NetworkMonitorTool
             var shell = _host.Services.GetRequiredService<ShellViewModel>();
             await shell.InitializeAsync();
 
+            // 告警弹窗订阅须在主窗口显示前激活（单例懒解析，此处显式触达）
+            _host.Services.GetRequiredService<AlertNotificationService>();
+
             var mainWindow = _host.Services.GetRequiredService<MainWindow>();
             mainWindow.DataContext = shell;
             MainWindow = mainWindow;

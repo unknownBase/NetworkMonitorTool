@@ -8,6 +8,7 @@
     <conv:DetectionStatusToBrushConverter x:Key="StatusToBrushConverter" />
     <conv:DetectionStatusToTextConverter x:Key="StatusToTextConverter" />
     <conv:PortProbeStatusToTextConverter x:Key="PortResultToTextConverter" />
+    <conv:AlertDeliveryMethodsToTextConverter x:Key="AlertDeliveryToTextConverter" />
     <conv:BoolToTextConverter x:Key="BoolToTextConverter" />
     <conv:TextToVisibilityConverter x:Key="TextToVisibilityConverter" />
     <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />

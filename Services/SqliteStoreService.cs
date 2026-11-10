@@ -103,6 +103,31 @@ namespace NetworkMonitorTool.Services
                     await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
                 }
 
+                // S7：旧库补充最近失败时间列（新库同样经此路径补齐，PRAGMA 探测保证幂等）
+                await using (var probe = conn.CreateCommand())
+                {
+                    probe.CommandText = $"PRAGMA table_info({AlertTableName});";
+                    var hasColumn = false;
+                    await using (var reader = await probe.ExecuteReaderAsync(ct).ConfigureAwait(false))
+                    {
+                        while (await reader.ReadAsync(ct).ConfigureAwait(false))
+                        {
+                            if (reader.GetString(1) == "last_failure_at")
+                            {
+                                hasColumn = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!hasColumn)
+                    {
+                        await using var alter = conn.CreateCommand();
+                        alter.CommandText = $"ALTER TABLE {AlertTableName} ADD COLUMN last_failure_at INTEGER NULL;";
+                        await alter.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+                    }
+                }
+
                 SetPersistent(true);
                 return true;
             }
@@ -177,8 +202,8 @@ namespace NetworkMonitorTool.Services
                 await using var cmd = conn.CreateCommand();
                 cmd.CommandText = $"""
                     INSERT INTO {AlertTableName}
-                        (timestamp, target_ip, port, consecutive_failures, error_summary, delivery_methods)
-                    VALUES ($ts, $ip, $port, $consecutive, $error, $methods);
+                        (timestamp, target_ip, port, consecutive_failures, error_summary, delivery_methods, last_failure_at)
+                    VALUES ($ts, $ip, $port, $consecutive, $error, $methods, $lastFailure);
                     """;
                 cmd.Parameters.AddWithValue("$ts", record.Timestamp.Ticks);
                 cmd.Parameters.AddWithValue("$ip", record.TargetIp);
@@ -186,6 +211,7 @@ namespace NetworkMonitorTool.Services
                 cmd.Parameters.AddWithValue("$consecutive", record.ConsecutiveFailures);
                 cmd.Parameters.AddWithValue("$error", (object?)record.ErrorSummary ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("$methods", (int)record.DeliveryMethods);
+                cmd.Parameters.AddWithValue("$lastFailure", record.LastFailureAt is { } at ? at.Ticks : DBNull.Value);
                 await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
                 return true;
             }
@@ -275,7 +301,7 @@ namespace NetworkMonitorTool.Services
                 await using var conn = await OpenAsync(cancellationToken).ConfigureAwait(false);
                 await using var cmd = conn.CreateCommand();
                 cmd.CommandText = $"""
-                    SELECT timestamp, target_ip, port, consecutive_failures, error_summary, delivery_methods
+                    SELECT timestamp, target_ip, port, consecutive_failures, error_summary, delivery_methods, last_failure_at
                     FROM {AlertTableName}
                     WHERE timestamp >= $since
                     ORDER BY timestamp ASC;
@@ -293,6 +319,7 @@ namespace NetworkMonitorTool.Services
                         ConsecutiveFailures = reader.GetInt32(3),
                         ErrorSummary = reader.IsDBNull(4) ? null : reader.GetString(4),
                         DeliveryMethods = (AlertDeliveryMethods)reader.GetInt32(5),
+                        LastFailureAt = reader.IsDBNull(6) ? null : new DateTime(reader.GetInt64(6)),
                     });
                 }
 

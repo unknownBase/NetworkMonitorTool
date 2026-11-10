@@ -18,6 +18,7 @@ using Microsoft.Extensions.Logging;
 //   DetectorConsole --ip 10.255.255.1 --timeout 1500 --cycles 5        （S6：断网达阈值恰好告警一次）
 //   DetectorConsole --threshold 2 --count-port off --port 9 --policy Always --cycles 3
 //                                                                      （S6：阈值与端口失败计入开关覆盖，仅本次运行）
+//   DetectorConsole --export-alerts D:\Temp\alerts.csv                 （S7：导出告警历史并验证 BOM/转义/最近失败时间）
 
 var opts = ParseArgs(args);
 
@@ -104,9 +105,10 @@ var alertEngine = provider.GetRequiredService<IAlertService>();
 await alertEngine.InitializeAsync();
 alertEngine.AlertTriggered += (_, a) => Console.WriteLine(
     $"  ! 告警触发 [{a.Timestamp:HH:mm:ss}] {a.TargetIp}:{a.Port?.ToString() ?? "-"}"
-    + $" 连续失败={a.ConsecutiveFailures} 送达={a.DeliveryMethods} 原因={a.ErrorSummary ?? "无"}");
+    + $" 连续失败={a.ConsecutiveFailures} 最近失败=[{a.LastFailureAt?.ToString("HH:mm:ss") ?? "无"}]"
+    + $" 送达={a.DeliveryMethods} 原因={a.ErrorSummary ?? "无"}");
 
-Console.WriteLine("== NetworkMonitorTool 控制台验证（S2 检测核心 + S3 存储与配置 + S5 导出 + S6 告警）==");
+Console.WriteLine("== NetworkMonitorTool 控制台验证（S2 检测核心 + S3 存储与配置 + S5 导出 + S6/S7 告警）==");
 Console.WriteLine($"配置文件: {configService.ConfigFilePath}");
 Console.WriteLine($"数据目录: {AppPaths.Root}");
 Console.WriteLine($"数据库  : {AppPaths.DatabaseFile}（持久化 {(store.IsPersistent ? "可用" : "不可用，已降级为仅内存")}）");
@@ -161,6 +163,7 @@ var alerts = await store.LoadAlertRecordsAsync(since);
 Console.WriteLine($"回读告警记录（分表 alert_record）：{alerts.Count} 条"
     + (alerts.Count > 0
         ? $"，最近一条 [{alerts[^1].Timestamp:yyyy-MM-dd HH:mm:ss}] 连续失败={alerts[^1].ConsecutiveFailures}"
+            + $" 最近失败时间={(alerts[^1].LastFailureAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? "无（旧数据）")}"
             + $" 送达={alerts[^1].DeliveryMethods}"
         : string.Empty));
 
@@ -188,6 +191,34 @@ if (opts.ExportTo is { Length: > 0 } exportTo)
     Console.WriteLine($"字段转义验证（逗号/引号/换行）: {(escaped ? "✓" : "✗")} → {escapePath}");
     Console.WriteLine("--export 模式，不执行检测。");
     return hasBom && escaped && exported == before.Count ? 0 : 2;
+}
+
+if (opts.ExportAlertsTo is { Length: > 0 } exportAlertsTo)
+{
+    // S7 收口验证：导出保留期告警记录 + BOM / 字段转义 / 最近失败时间列检查
+    var export = provider.GetRequiredService<IExportService>();
+    var exported = await export.ExportAlertRecordsAsync(alerts, exportAlertsTo);
+    var bytes = await File.ReadAllBytesAsync(exportAlertsTo);
+    var hasBom = bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF;
+    Console.WriteLine($"导出告警 {exported} 条 → {exportAlertsTo}（UTF-8 BOM {(hasBom ? "有 ✓" : "缺失 ✗")}）");
+    Console.WriteLine($"默认文件名示例: {export.BuildAlertDefaultFileName(config.Detection.TargetIp)}");
+
+    var escapePath = Path.ChangeExtension(exportAlertsTo, ".escape.csv");
+    var tricky = new AlertRecord
+    {
+        Timestamp = DateTime.Now,
+        TargetIp = config.Detection.TargetIp,
+        ConsecutiveFailures = 3,
+        LastFailureAt = DateTime.Now.AddSeconds(-1),
+        ErrorSummary = "a,\"b\"\nc",
+        DeliveryMethods = AlertDeliveryMethods.Popup | AlertDeliveryMethods.TrayNotify,
+    };
+    await export.ExportAlertRecordsAsync(new[] { tricky }, escapePath);
+    var escapedText = await File.ReadAllTextAsync(escapePath);
+    var escaped = escapedText.Contains("\"a,\"\"b\"\"\nc\"") && escapedText.Contains("弹窗 + 托盘通知");
+    Console.WriteLine($"字段转义与告警方式文案验证: {(escaped ? "✓" : "✗")} → {escapePath}");
+    Console.WriteLine("--export-alerts 模式，不执行检测。");
+    return hasBom && escaped && exported == alerts.Count ? 0 : 2;
 }
 
 if (opts.Clear)
@@ -319,6 +350,7 @@ static RunOptions ParseArgs(string[] args)
             case "--seed": o.Seed = true; break;
             case "--load-only": o.LoadOnly = true; break;
             case "--export": o.ExportTo = Next(); break;
+            case "--export-alerts": o.ExportAlertsTo = Next(); break;
             case "--threshold": if (int.TryParse(Next(), out var th) && th > 0) o.ThresholdOverride = th; break;
             case "--count-port":
                 var cp = Next();
@@ -370,6 +402,9 @@ internal sealed class RunOptions
 
     /// <summary>导出保留期检测记录到该 CSV 路径后退出（S5 导出验证）。</summary>
     public string? ExportTo { get; set; }
+
+    /// <summary>导出保留期告警记录到该 CSV 路径后退出（S7 告警导出验证）。</summary>
+    public string? ExportAlertsTo { get; set; }
 
     /// <summary>告警阈值覆盖（仅本次运行，S6 验证）。</summary>
     public int? ThresholdOverride { get; set; }

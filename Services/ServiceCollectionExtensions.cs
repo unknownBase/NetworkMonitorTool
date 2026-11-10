@@ -52,6 +52,7 @@ namespace NetworkMonitorTool
         {
             services.AddSingleton<IRuntimeStatusService, RuntimeStatusService>();
             services.AddSingleton<IDialogService, WpfDialogService>();
+            services.AddSingleton<AlertNotificationService>();
 
             services.AddSingleton<DashboardViewModel>();
             services.AddSingleton<LogPageViewModel>();

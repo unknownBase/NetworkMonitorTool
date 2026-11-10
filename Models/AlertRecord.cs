@@ -39,6 +39,12 @@ namespace NetworkMonitorTool.Models
         /// <summary>最近失败原因摘要。</summary>
         public string? ErrorSummary { get; init; }
 
+        /// <summary>
+        /// 触发告警的最近一次检测失败时间（弹窗内容用，DESIGN 第八节 5）。
+        /// 立即告警（启动时达阈）与触发时间可能不同；旧数据无此字段时为 null。
+        /// </summary>
+        public DateTime? LastFailureAt { get; init; }
+
         /// <summary>实际送达的告警通道。</summary>
         public AlertDeliveryMethods DeliveryMethods { get; init; } = AlertDeliveryMethods.None;
     }

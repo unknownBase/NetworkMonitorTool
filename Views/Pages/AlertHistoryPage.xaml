@@ -6,9 +6,10 @@
              xmlns:vm="clr-namespace:NetworkMonitorTool.ViewModels"
              mc:Ignorable="d"
              d:DataContext="{d:DesignInstance Type=vm:AlertHistoryViewModel}">
-    <!-- 告警历史页（DESIGN 第四节 3）：数据来自 alert_record 分表，与检测日志分表存储 -->
+    <!-- 告警历史页（DESIGN 第四节 3）：alert_record 分表、时间筛选、导出 CSV、清空（二次确认） -->
     <Grid Margin="20">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -16,24 +17,53 @@
 
         <TextBlock Grid.Row="0" Text="{Binding RetentionHint}" TextWrapping="Wrap" Opacity="0.8" />
 
-        <Border Grid.Row="1" Margin="0,8,0,8" Padding="10,6" CornerRadius="4"
-                Background="#FFF7E6" BorderBrush="#F0DCB0" BorderThickness="1">
-            <TextBlock Text="{Binding PendingFeatureHint}" TextWrapping="Wrap" />
-        </Border>
+        <!-- 筛选与操作条 -->
+        <WrapPanel Grid.Row="1" Margin="0,10,0,0" Orientation="Horizontal">
+            <TextBlock Text="从" VerticalAlignment="Center" Margin="0,0,6,0" />
+            <DatePicker Width="130" VerticalAlignment="Center" SelectedDate="{Binding FromDate}" />
+            <TextBlock Text="到" VerticalAlignment="Center" Margin="8,0,6,0" />
+            <DatePicker Width="130" VerticalAlignment="Center" SelectedDate="{Binding ToDate}" />
+            <Button Content="重置筛选" Padding="10,5" Margin="10,0,0,0" VerticalAlignment="Center"
+                    Command="{Binding ResetFilterCommand}" />
 
-        <DataGrid Grid.Row="2" ItemsSource="{Binding Records}"
+            <Button Content="导出 CSV" Padding="10,5" Margin="20,0,0,0" VerticalAlignment="Center"
+                    Command="{Binding ExportCsvCommand}"
+                    ToolTip="导出当前筛选结果（UTF-8 带 BOM，可用 Excel 打开）" />
+            <Button Content="清空" Padding="10,5" Margin="8,0,0,0" VerticalAlignment="Center"
+                    Command="{Binding ClearCommand}"
+                    ToolTip="清空界面记录与数据库全部告警历史（需确认）" />
+        </WrapPanel>
+
+        <!-- 条数与操作结果 / 行内提示 -->
+        <StackPanel Grid.Row="2" Margin="0,8,0,8">
+            <TextBlock Text="{Binding CountText}" Opacity="0.8" />
+            <TextBlock Text="{Binding TimeRangeError}" Foreground="#C42B1C" TextWrapping="Wrap"
+                       Visibility="{Binding TimeRangeError, Converter={StaticResource TextToVisibilityConverter}}" />
+            <TextBlock Text="{Binding ActionMessage}" TextWrapping="Wrap" Foreground="#0F6CBD"
+                       Visibility="{Binding ActionMessage, Converter={StaticResource TextToVisibilityConverter}}" />
+        </StackPanel>
+
+        <DataGrid Grid.Row="3" ItemsSource="{Binding RecordsView}"
                   AutoGenerateColumns="False" IsReadOnly="True"
                   HeadersVisibility="Column" CanUserAddRows="False"
-                  GridLinesVisibility="Horizontal">
+                  CanUserSortColumns="True"
+                  GridLinesVisibility="Horizontal"
+                  VirtualizingStackPanel.IsVirtualizing="True"
+                  VirtualizingStackPanel.VirtualizationMode="Recycling"
+                  ScrollViewer.CanContentScroll="True">
             <DataGrid.Columns>
-                <DataGridTextColumn Header="告警时间" Width="170"
+                <DataGridTextColumn Header="告警时间" Width="170" SortMemberPath="Timestamp"
                                     Binding="{Binding Timestamp, StringFormat=yyyy-MM-dd HH:mm:ss}" />
                 <DataGridTextColumn Header="目标 IP" Width="140" Binding="{Binding TargetIp}" />
-                <DataGridTextColumn Header="端口" Width="80"
+                <DataGridTextColumn Header="端口" Width="80" SortMemberPath="Port"
                                     Binding="{Binding Port, TargetNullValue=—}" />
-                <DataGridTextColumn Header="连续失败次数" Width="110" Binding="{Binding ConsecutiveFailures}" />
+                <DataGridTextColumn Header="连续失败次数" Width="110" SortMemberPath="ConsecutiveFailures"
+                                    Binding="{Binding ConsecutiveFailures}" />
+                <DataGridTextColumn Header="最近失败时间" Width="170" SortMemberPath="LastFailureAt"
+                                    Binding="{Binding LastFailureAt, StringFormat=yyyy-MM-dd HH:mm:ss, TargetNullValue=—}" />
                 <DataGridTextColumn Header="最近失败原因" Width="*" Binding="{Binding ErrorSummary}" />
-                <DataGridTextColumn Header="告警方式" Width="150" Binding="{Binding DeliveryMethods}" />
+                <DataGridTextColumn Header="告警方式" Width="150" SortMemberPath="DeliveryMethods"
+                                    Binding="{Binding DeliveryMethods, Converter={StaticResource AlertDeliveryToTextConverter}}" />
             </DataGrid.Columns>
         </DataGrid>
     </Grid>

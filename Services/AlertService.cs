@@ -129,6 +129,7 @@ namespace NetworkMonitorTool.Services
                 Port = _lastFailure?.Port ?? _config.Current.Detection.Port,
                 ConsecutiveFailures = _failures,
                 ErrorSummary = _lastFailure?.ErrorSummary,
+                LastFailureAt = _lastFailure?.Timestamp,
                 DeliveryMethods = (alertConfig.PopupEnabled ? AlertDeliveryMethods.Popup : 0)
                     | (alertConfig.TrayNotifyEnabled ? AlertDeliveryMethods.TrayNotify : 0),
             };

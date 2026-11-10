@@ -25,6 +25,14 @@
                 </Grid>
             </Border>
 
+            <!-- 告警中醒目标记（DESIGN 第十节）：红色横幅，恢复成功后随 IsAlerting 复位自动隐藏 -->
+            <Border Margin="0,8,0,0" Padding="12,8" CornerRadius="6" Background="#FDE7E9"
+                    BorderBrush="#C42B1C" BorderThickness="1"
+                    Visibility="{Binding Status.IsAlerting, Converter={StaticResource BoolToVisibilityConverter}}">
+                <TextBlock Foreground="#C42B1C" FontWeight="SemiBold" TextWrapping="Wrap"
+                           Text="{Binding Status.ConsecutiveFailuresText, StringFormat=告警中：连续失败 {0} 次已触发告警，恢复成功后自动重置}" />
+            </Border>
+
             <!-- 目标与检测参数摘要 -->
             <Border Margin="0,16,0,0" Padding="16" CornerRadius="6" Background="#F7F7F9"
                     BorderBrush="#E4E4E7" BorderThickness="1">

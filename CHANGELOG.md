@@ -59,5 +59,16 @@
   暂停期间调度不产生记录故不计数不告警，停止保留计数与告警状态；
   `DetectorConsole` 扩展 `--threshold` / `--count-port`（仅本次运行）并输出告警触发与引擎状态，
   回归覆盖断网达阈恰好告警一次、冷启动延续、成功重置与计入开关两态。
+- S7 告警展示：`AlertNotificationService` 订阅 `AlertTriggered` 经 `Dispatcher` 编组弹窗
+  （内容含目标、连续失败次数、最近失败时间与原因摘要，受设置页弹窗开关控制；
+  托盘通知开关与送达通道记录已生效，实际托盘投递随 S9 接入）；
+  `AlertRecord` 新增 `LastFailureAt` 并经 `alert_record.last_failure_at` 列探测迁移持久化（旧数据为空）；
+  `IRuntimeStatusService` 新增 `IsAlerting`，状态优先级暂停中 > 告警中 > 最近检测结果，
+  仪表盘红色横幅与顶栏「!」醒目标记随告警触发显示、恢复成功自动复位；
+  告警历史页补全：时间范围筛选（含当日、起止颠倒行内提示）、`ICollectionView` 默认时间降序与列头排序、
+  虚拟化表格、导出当前筛选结果（`IExportService.ExportAlertRecordsAsync`，UTF-8 BOM、RFC 4180 转义、
+  默认文件名 `告警历史_{目标}_{时间戳}.csv`）、清空二次确认同清界面与数据库、运行期新告警实时追加；
+  新增 `AlertDeliveryMethodsToTextConverter`（界面与导出共用「告警方式」文案）；
+  `DetectorConsole` 扩展 `--export-alerts` 验证 BOM / 转义 / 最近失败时间列与旧数据兼容。
 
 <!-- 下一版本条目在此之后追加 -->
