@@ -1,6 +1,7 @@
 using NetworkMonitorTool.Services;
 using NetworkMonitorTool.Services.Probes;
 using NetworkMonitorTool.ViewModels;
+using NetworkMonitorTool.Views;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -53,6 +54,11 @@ namespace NetworkMonitorTool
             services.AddSingleton<IRuntimeStatusService, RuntimeStatusService>();
             services.AddSingleton<IDialogService, WpfDialogService>();
             services.AddSingleton<AlertNotificationService>();
+
+            // S8 窗口形态：服务懒解析窗口避免构造环；工具条窗口按需创建、非常驻
+            services.AddSingleton<IWindowModeService, WindowModeService>();
+            services.AddSingleton<ToolbarViewModel>();
+            services.AddTransient<ToolbarWindow>();
 
             services.AddSingleton<DashboardViewModel>();
             services.AddSingleton<LogPageViewModel>();

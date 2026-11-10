@@ -1,6 +1,7 @@
 ﻿using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using NetworkMonitorTool.Services;
 using NetworkMonitorTool.ViewModels;
 
 namespace NetworkMonitorTool.Views
@@ -11,15 +12,18 @@ namespace NetworkMonitorTool.Views
     /// </summary>
     public partial class MainWindow : Window
     {
+        private readonly IWindowModeService _modes;
+
         /// <summary>代码内回退选中项时抑制 SelectionChanged 递归处理。</summary>
         private bool _suppressSelection;
 
         /// <summary>未保存确认已通过，允许真正关闭。</summary>
         private bool _closeVerified;
 
-        public MainWindow()
+        public MainWindow(IWindowModeService modes)
         {
             InitializeComponent();
+            _modes = modes;
         }
 
         private ShellViewModel? Shell => DataContext as ShellViewModel;
@@ -66,7 +70,7 @@ namespace NetworkMonitorTool.Views
         /// </summary>
         protected override void OnClosing(CancelEventArgs e)
         {
-            if (_closeVerified)
+            if (_closeVerified || _modes.IsExiting)
             {
                 base.OnClosing(e);
                 return;

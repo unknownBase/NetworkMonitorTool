@@ -1,0 +1,69 @@
+<Window x:Class="NetworkMonitorTool.Views.ToolbarWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:NetworkMonitorTool.ViewModels"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance Type=vm:ToolbarViewModel}"
+        Title="网络连通性监测工具条"
+        Width="680" Height="46"
+        WindowStyle="None" ResizeMode="NoResize"
+        WindowStartupLocation="Manual" ShowInTaskbar="False"
+        FontSize="12" SnapsToDevicePixels="True">
+    <!-- 桌面工具条（DESIGN 第九节 2）：无边框紧凑形态，按住空白处拖动，双击恢复主窗口 -->
+    <Window.ContextMenu>
+        <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+            <MenuItem Header="启动" Command="{Binding StartCommand}" />
+            <MenuItem Header="停止" Command="{Binding StopCommand}" />
+            <Separator />
+            <MenuItem Header="暂停" Command="{Binding PauseCommand}" />
+            <MenuItem Header="恢复检测" Command="{Binding ResumeCommand}" />
+            <Separator />
+            <MenuItem Header="恢复主窗口" Command="{Binding RestoreMainWindowCommand}" />
+            <MenuItem Header="退出" Command="{Binding ExitCommand}" />
+        </ContextMenu>
+    </Window.ContextMenu>
+
+    <Border Background="#F3F3F3" BorderBrush="#C9C9C9" BorderThickness="1"
+            MouseLeftButtonDown="OnRootMouseLeftButtonDown">
+        <Grid Margin="10,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 状态色块 + 文案（告警中红色醒目，DESIGN 第八节 5、第十节） -->
+            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                <Ellipse Width="12" Height="12" Fill="{Binding Status.StatusBrush}" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding Status.StatusText}" Margin="6,0,0,0" FontWeight="SemiBold"
+                           VerticalAlignment="Center" />
+                <TextBlock Text="!" Foreground="#C42B1C" FontWeight="Bold" Margin="4,0,0,0"
+                           VerticalAlignment="Center"
+                           Visibility="{Binding Status.IsAlerting, Converter={StaticResource BoolToVisibilityConverter}}" />
+            </StackPanel>
+
+            <TextBlock Grid.Column="1" Text="{Binding TargetText}" Margin="12,0" FontWeight="SemiBold"
+                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                       ToolTip="{Binding TargetText}" />
+
+            <TextBlock Grid.Column="2" Text="{Binding Status.LatencyText, StringFormat=延迟 {0}}"
+                       Margin="0,0,12,0" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="3" Text="{Binding Status.ConsecutiveFailuresText, StringFormat=连续失败 {0}}"
+                       Margin="0,0,12,0" VerticalAlignment="Center" />
+
+            <!-- 五个操作按钮（DESIGN 第九节 2） -->
+            <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Content="启动" MinWidth="42" Padding="6,3" Command="{Binding StartCommand}" />
+                <Button Content="停止" MinWidth="42" Padding="6,3" Margin="4,0,0,0" Command="{Binding StopCommand}" />
+                <Button Content="暂停" MinWidth="42" Padding="6,3" Margin="4,0,0,0" Command="{Binding PauseCommand}" />
+                <Button Content="恢复" MinWidth="42" Padding="6,3" Margin="4,0,0,0" Command="{Binding ResumeCommand}" />
+                <Button Content="主窗口" MinWidth="52" Padding="6,3" Margin="8,0,0,0"
+                        Command="{Binding RestoreMainWindowCommand}" ToolTip="恢复主窗口（双击工具条同效）" />
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

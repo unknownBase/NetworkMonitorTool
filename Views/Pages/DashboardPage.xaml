@@ -73,7 +73,7 @@
                 </UniformGrid>
             </Border>
 
-            <!-- 快捷操作（DESIGN 第四节 1；转为工具条在 S8 交付，暂不可用） -->
+            <!-- 快捷操作（DESIGN 第四节 1；转为工具条随 S8 窗口形态服务交付） -->
             <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
                 <Button Content="启动" MinWidth="88" Padding="10,6" Command="{Binding StartCommand}" />
                 <Button Content="停止" MinWidth="88" Padding="10,6" Margin="8,0,0,0" Command="{Binding StopCommand}" />
@@ -81,7 +81,7 @@
                 <Button Content="恢复" MinWidth="88" Padding="10,6" Margin="8,0,0,0" Command="{Binding ResumeCommand}" />
                 <Button Content="转为工具条" MinWidth="104" Padding="10,6" Margin="8,0,0,0"
                         Command="{Binding SwitchToToolbarCommand}"
-                        ToolTip="工具条形态将在 S8 迭代交付" />
+                        ToolTip="隐藏主窗口，显示无边框紧凑工具条（双击或右键可恢复）" />
             </StackPanel>
 
             <!-- 最近记录简表（只读预览，可跳转日志页） -->

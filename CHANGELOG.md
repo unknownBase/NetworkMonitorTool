@@ -70,5 +70,16 @@
   默认文件名 `告警历史_{目标}_{时间戳}.csv`）、清空二次确认同清界面与数据库、运行期新告警实时追加；
   新增 `AlertDeliveryMethodsToTextConverter`（界面与导出共用「告警方式」文案）；
   `DetectorConsole` 扩展 `--export-alerts` 验证 BOM / 转义 / 最近失败时间列与旧数据兼容。
+- S8 桌面工具条：`IWindowModeService`/`WindowModeService` 主窗口 ↔ 工具条互斥切换
+  （窗口懒解析避免构造环，`WindowMode` 预留托盘形态随 S9 接入），
+  仪表盘「转为工具条」按钮启用；`ToolbarWindow`/`ToolbarViewModel` 无边框紧凑窗口
+  （目标 IP、状态色块与文案、最近延迟、连续失败次数、启动 / 停止 / 暂停 / 恢复 / 主窗口五按钮，
+  状态绑定全局状态中心含「告警中」红色标记），空白处按住拖动、双击恢复主窗口并回到上次停留页、
+  右键菜单（启动停止 / 暂停恢复 / 恢复主窗口 / 退出）；
+  坐标存数据目录 `window-state.json` 并纳入目录迁移清单，首次显示默认主屏工作区右下角，
+  恢复时按虚拟屏幕边界夹取防越界（`ClampPosition` 纯函数）；工具条置顶随设置保存立即生效；
+  右键退出保存坐标后统一 `Shutdown`（`IsExiting` 令窗口关闭拦截放行），
+  S8 无托盘期间工具条 Alt+F4 回主窗口避免不可见运行；`App` 关闭模式改为 `OnMainWindowClose`；
+  `DetectorConsole` 扩展 `--clamp-check` 回归越界校正 5 例。关闭行为三选项与最小化自动转换随 S9 接入。
 
 <!-- 下一版本条目在此之后追加 -->

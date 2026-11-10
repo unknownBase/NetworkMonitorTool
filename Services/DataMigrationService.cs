@@ -254,7 +254,7 @@ namespace NetworkMonitorTool.Services
             return Convert.ToInt64(cmd.ExecuteScalar() ?? 0L);
         }
 
-        /// <summary>待迁移文件：根目录下的数据库及附属文件 + 日志目录全部内容。</summary>
+        /// <summary>待迁移文件：根目录下的数据库及附属文件、窗口状态文件 + 日志目录全部内容。</summary>
         private static IEnumerable<string> EnumerateDataFiles(string root)
         {
             var dbFileName = Path.GetFileName(AppPaths.DatabaseFile);
@@ -265,6 +265,12 @@ namespace NetworkMonitorTool.Services
                 {
                     yield return path;
                 }
+            }
+
+            var statePath = Path.Combine(root, Path.GetFileName(AppPaths.WindowStateFile));
+            if (File.Exists(statePath))
+            {
+                yield return statePath;
             }
 
             if (Directory.Exists(AppPaths.LogDirectory) &&

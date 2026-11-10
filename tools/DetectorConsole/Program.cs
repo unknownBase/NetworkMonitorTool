@@ -19,8 +19,30 @@ using Microsoft.Extensions.Logging;
 //   DetectorConsole --threshold 2 --count-port off --port 9 --policy Always --cycles 3
 //                                                                      （S6：阈值与端口失败计入开关覆盖，仅本次运行）
 //   DetectorConsole --export-alerts D:\Temp\alerts.csv                 （S7：导出告警历史并验证 BOM/转义/最近失败时间）
+//   DetectorConsole --clamp-check                                    （S8：工具条坐标越界校正纯函数回归）
 
 var opts = ParseArgs(args);
+
+if (opts.ClampCheck)
+{
+    // S8 收口验证：WindowModeService.ClampPosition 纯函数（不触界面），覆盖多显示器负原点与窗口超屏
+    var ok = true;
+    void Check(string name, (double Left, double Top) actual, double left, double top)
+    {
+        var pass = Math.Abs(actual.Left - left) < 1e-9 && Math.Abs(actual.Top - top) < 1e-9;
+        ok &= pass;
+        Console.WriteLine($"  {(pass ? "✓" : "✗")} {name}: ({actual.Left}, {actual.Top})");
+    }
+
+    Console.WriteLine("== 工具条坐标越界校正回归（屏幕矩形内夹取，窗口 680x46）==");
+    Check("范围内保持", WindowModeService.ClampPosition(100, 100, 680, 46, 0, 0, 1920, 1080), 100, 100);
+    Check("右下溢出校正", WindowModeService.ClampPosition(1800, 1070, 680, 46, 0, 0, 1920, 1080), 1240, 1034);
+    Check("负坐标校正", WindowModeService.ClampPosition(-50, -20, 680, 46, 0, 0, 1920, 1080), 0, 0);
+    Check("副屏负原点保持", WindowModeService.ClampPosition(-1000, 100, 680, 46, -1920, 0, 3840, 1080), -1000, 100);
+    Check("窗口大于屏幕贴原点", WindowModeService.ClampPosition(500, 500, 2000, 1200, 0, 0, 1920, 1080), 0, 0);
+    Console.WriteLine($"结果: {(ok ? "全部通过" : "存在失败")}");
+    return ok ? 0 : 2;
+}
 
 var services = new ServiceCollection();
 services.AddLogging(b => b
@@ -358,6 +380,7 @@ static RunOptions ParseArgs(string[] args)
                 else if (cp is "off" or "false") o.CountPortOverride = false;
                 break;
             case "--clear": o.Clear = true; break;
+            case "--clamp-check": o.ClampCheck = true; break;
             case "--verbose": o.Verbose = true; break;
         }
     }
@@ -411,6 +434,9 @@ internal sealed class RunOptions
 
     /// <summary>端口失败计入开关覆盖（仅本次运行，S6 验证）。</summary>
     public bool? CountPortOverride { get; set; }
+
+    /// <summary>工具条坐标越界校正纯函数回归后退出（S8 验证，不触界面）。</summary>
+    public bool ClampCheck { get; set; }
 
     public bool Verbose { get; set; }
 }

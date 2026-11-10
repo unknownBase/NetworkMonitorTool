@@ -40,6 +40,9 @@ namespace NetworkMonitorTool.Services
         /// <summary>错误日志文件路径（全局未捕获异常写入处，关于页可查）</summary>
         public static string ErrorLogFile => Path.Combine(LogDirectory, "error.log");
 
+        /// <summary>窗口形态状态（工具条坐标，DESIGN 第九节 3 位置记忆），随数据目录迁移</summary>
+        public static string WindowStateFile => Path.Combine(Root, "window-state.json");
+
         /// <summary>确保数据根目录存在</summary>
         public static void EnsureRoot() => Directory.CreateDirectory(Root);
 

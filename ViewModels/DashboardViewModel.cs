@@ -19,17 +19,20 @@ namespace NetworkMonitorTool.ViewModels
         private readonly IConfigService _config;
         private readonly ISchedulerService _scheduler;
         private readonly IStoreService _store;
+        private readonly IWindowModeService _modes;
 
         public DashboardViewModel(
             IRuntimeStatusService status,
             IConfigService config,
             ISchedulerService scheduler,
-            IStoreService store)
+            IStoreService store,
+            IWindowModeService modes)
         {
             Status = status;
             _config = config;
             _scheduler = scheduler;
             _store = store;
+            _modes = modes;
 
             _state = status.State;
             status.PropertyChanged += (_, e) =>
@@ -129,16 +132,9 @@ namespace NetworkMonitorTool.ViewModels
 
         private bool CanResume() => State == SchedulerState.Paused;
 
-        /// <summary>
-        /// 转为工具条：形态切换服务在 S8 交付，届时接 <c>IWindowModeService</c>。
-        /// 本迭代先占位，按钮不可用，避免出现无响应的交互。
-        /// </summary>
-        [RelayCommand(CanExecute = nameof(CanSwitchToToolbar))]
-        private void SwitchToToolbar()
-        {
-        }
-
-        private static bool CanSwitchToToolbar() => false;
+        /// <summary>转为桌面工具条（DESIGN 第九节 1 主窗口按钮入口，S8 交付）。</summary>
+        [RelayCommand]
+        private Task SwitchToToolbarAsync() => _modes.ShowToolbarAsync();
 
         [RelayCommand]
         private void NavigateToLog() => NavigateToLogRequested?.Invoke(this, EventArgs.Empty);
