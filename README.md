@@ -27,7 +27,8 @@
 
 - **框架**：.NET 8，WPF（`net8.0-windows`）
 - **架构**：MVVM + 依赖注入 + 后台调度，单窗口多页导航
-- **UI 库**：[WPF-UI](https://github.com/lepoco/wpfui)（Fluent 控件、Mica 背衬、NotifyIcon 托盘）
+- **UI 库**：[WPF-UI](https://github.com/lepoco/wpfui)（Fluent 控件、Mica 背衬）
+- **托盘**：[H.NotifyIcon.Wpf](https://github.com/HavenDV/H.NotifyIcon)（纯 WPF 实现，不依赖 WinForms）
 - **MVVM**：CommunityToolkit.Mvvm（源生成器 `[ObservableProperty]` / `[RelayCommand]`）
 - **宿主 / DI**：Microsoft.Extensions.Hosting 泛型主机（自带 DI、配置、日志、BackgroundService）
 - **存储**：SQLite（Microsoft.Data.Sqlite），检测记录与告警记录分表

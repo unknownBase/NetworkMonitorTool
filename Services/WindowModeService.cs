@@ -10,7 +10,8 @@ using Microsoft.Extensions.Logging;
 namespace NetworkMonitorTool.Services
 {
     /// <summary>
-    /// 窗口形态服务默认实现（DESIGN 第九节）：主窗口 ↔ 工具条互斥显示，
+    /// 窗口形态服务默认实现（DESIGN 第三节 3、第九节）：主窗口 ↔ 工具条互斥显示，
+    /// 关闭主窗口按设置转工具条 / 最小化到托盘 / 退出；仅托盘形态下无可见窗口、由托盘图标操作。
     /// 工具条坐标存于数据目录 window-state.json（随目录迁移），首次显示默认主屏工作区右下角；
     /// 恢复坐标时按虚拟屏幕边界校正，防止多显示器 / 分辨率变化后越界不可见。
     /// 窗口经 <see cref="IServiceProvider"/> 懒解析，避免与视图模型的构造环依赖。
@@ -63,7 +64,9 @@ namespace NetworkMonitorTool.Services
             }
 
             ApplyTopmost();
-            _services.GetRequiredService<MainWindow>().Hide();
+            var main = _services.GetRequiredService<MainWindow>();
+            NormalizeIfMinimized(main);
+            main.Hide();
             _toolbar.Show();
             _toolbar.Activate();
             return Task.CompletedTask;
@@ -83,8 +86,19 @@ namespace NetworkMonitorTool.Services
             await _services.GetRequiredService<ShellViewModel>().RestoreLastPageAsync();
 
             var main = _services.GetRequiredService<MainWindow>();
+            NormalizeIfMinimized(main);
             main.Show();
             main.Activate();
+        }
+
+        public Task CloseMainWindowAsync()
+        {
+            return _config.Current.Interface.CloseMainWindowBehavior switch
+            {
+                CloseWindowBehavior.Exit => ExitAsync(),
+                CloseWindowBehavior.MinimizeToTray => HideMainWindowToTrayAsync(),
+                _ => ShowToolbarAsync(),
+            };
         }
 
         public Task ExitAsync()
@@ -93,6 +107,31 @@ namespace NetworkMonitorTool.Services
             SavePosition();
             Application.Current.Shutdown();
             return Task.CompletedTask;
+        }
+
+        /// <summary>最小化到托盘：隐藏两个窗口，仅保留常驻托盘图标（DESIGN 第三节 3）。</summary>
+        private Task HideMainWindowToTrayAsync()
+        {
+            SetMode(WindowMode.Tray);
+            SavePosition();
+            _toolbar?.Hide();
+
+            var main = _services.GetRequiredService<MainWindow>();
+            NormalizeIfMinimized(main);
+            main.Hide();
+            return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// 隐藏 / 显示前把最小化窗口还原为普通状态：否则 Hide 期间的最小化状态
+        /// 会使后续 Show 仍以最小化呈现、用户看不到窗口。
+        /// </summary>
+        private static void NormalizeIfMinimized(Window window)
+        {
+            if (window.WindowState == WindowState.Minimized)
+            {
+                window.WindowState = WindowState.Normal;
+            }
         }
 
         /// <summary>
@@ -162,7 +201,7 @@ namespace NetworkMonitorTool.Services
             {
                 AppPaths.EnsureRoot();
                 var json = JsonSerializer.Serialize(
-                    new WindowState(_toolbar.Left, _toolbar.Top), JsonOptions);
+                    new ToolbarState(_toolbar.Left, _toolbar.Top), JsonOptions);
                 File.WriteAllText(AppPaths.WindowStateFile, json);
             }
             catch (Exception ex)
@@ -172,12 +211,12 @@ namespace NetworkMonitorTool.Services
             }
         }
 
-        private WindowState? LoadState()
+        private ToolbarState? LoadState()
         {
             try
             {
                 return File.Exists(AppPaths.WindowStateFile)
-                    ? JsonSerializer.Deserialize<WindowState>(File.ReadAllText(AppPaths.WindowStateFile), JsonOptions)
+                    ? JsonSerializer.Deserialize<ToolbarState>(File.ReadAllText(AppPaths.WindowStateFile), JsonOptions)
                     : null;
             }
             catch (Exception ex)
@@ -187,6 +226,6 @@ namespace NetworkMonitorTool.Services
             }
         }
 
-        private sealed record WindowState(double ToolbarLeft, double ToolbarTop);
+        private sealed record ToolbarState(double ToolbarLeft, double ToolbarTop);
     }
 }

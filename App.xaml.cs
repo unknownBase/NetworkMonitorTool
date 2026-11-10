@@ -56,7 +56,7 @@ namespace NetworkMonitorTool
                     // ---- S4 页面框架（壳 / 各页视图模型、全局状态与对话框）----
                     services.AddPresentationCore();
 
-                    // ---- 服务占位（S10 逐个实现并注册；窗口形态 S8 已随 AddPresentationCore 注册）----
+                    // ---- 服务占位（S10 逐个实现并注册；窗口形态与托盘已随 AddPresentationCore 注册）----
                     // services.AddSingleton<ISingleInstanceService, SingleInstanceService>(); // S10
                     // services.AddSingleton<IAutoStartService, AutoStartService>();     // S10
                 })
@@ -78,7 +78,8 @@ namespace NetworkMonitorTool
             var shell = _host.Services.GetRequiredService<ShellViewModel>();
             await shell.InitializeAsync();
 
-            // 告警弹窗订阅须在主窗口显示前激活（单例懒解析，此处显式触达）
+            // 托盘图标须在主窗口显示前常驻；告警弹窗 / 托盘通知订阅也在此激活（单例懒解析，此处显式触达）
+            _host.Services.GetRequiredService<TrayIconService>();
             _host.Services.GetRequiredService<AlertNotificationService>();
 
             var mainWindow = _host.Services.GetRequiredService<MainWindow>();

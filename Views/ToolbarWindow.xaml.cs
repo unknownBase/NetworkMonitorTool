@@ -33,8 +33,8 @@ namespace NetworkMonitorTool.Views
         }
 
         /// <summary>
-        /// S8 尚无托盘：Alt+F4 等关闭途径回主窗口，避免主窗口隐藏时程序不可见地运行；
-        /// 明确退出走右键菜单（统一 Shutdown）。退出进行中则直接放行。
+        /// 工具条无系统关闭按钮，Alt+F4 等途径回主窗口，避免仅剩托盘而用户不知情；
+        /// 明确退出走右键菜单 / 托盘菜单（统一 Shutdown）。退出进行中则直接放行。
         /// </summary>
         protected override void OnClosing(CancelEventArgs e)
         {

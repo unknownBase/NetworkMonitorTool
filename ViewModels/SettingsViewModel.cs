@@ -104,9 +104,9 @@ namespace NetworkMonitorTool.ViewModels
         [ObservableProperty] private bool _autoStartEnabled;
         [ObservableProperty] private bool _autoStartInToolbar = true;
 
-        /// <summary>后续迭代才生效的项提示（关闭行为 / 最小化转换 S9，开机自启 S10；置顶 S8 已生效）。</summary>
+        /// <summary>后续迭代才生效的项提示（开机自启 S10；置顶 S8、关闭行为与最小化转换 S9 已生效）。</summary>
         public string DeferredHint { get; } =
-            "工具条置顶已生效；关闭行为与最小化自动转换在 S9 生效；开机自启在 S10 生效，当前仅保存配置";
+            "工具条置顶、关闭行为与最小化自动转换已生效；开机自启在 S10 生效，当前仅保存配置";
 
         // ---- 行内校验提示（DESIGN 第五节：不弹窗打断）----
 

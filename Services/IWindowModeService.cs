@@ -3,8 +3,8 @@ using NetworkMonitorTool.Models;
 namespace NetworkMonitorTool.Services
 {
     /// <summary>
-    /// 窗口形态服务（DESIGN 第三节 3、第九节）：主窗口 ↔ 工具条切换、
-    /// 工具条坐标保存恢复与越界校正。托盘形态与关闭行为三选项随 S9 接入。
+    /// 窗口形态服务（DESIGN 第三节 3、第九节）：主窗口 / 工具条 / 仅托盘三种形态切换、
+    /// 关闭行为三选项、工具条坐标保存恢复与越界校正。
     /// </summary>
     public interface IWindowModeService
     {
@@ -23,7 +23,13 @@ namespace NetworkMonitorTool.Services
         /// <summary>恢复主窗口：保存工具条坐标，回到上次停留页（DESIGN 第九节 4）。</summary>
         Task ShowMainWindowAsync();
 
-        /// <summary>退出程序：保存工具条坐标后统一 Shutdown（S9 将收口托盘 / 菜单 / 右键三入口）。</summary>
+        /// <summary>
+        /// 关闭主窗口：按设置的关闭行为转工具条 / 最小化到托盘 / 退出（DESIGN 第三节 3）。
+        /// 未保存修改确认由调用方先行完成。
+        /// </summary>
+        Task CloseMainWindowAsync();
+
+        /// <summary>退出程序：保存工具条坐标后统一 Shutdown（主窗口 / 托盘 / 工具条三入口共用）。</summary>
         Task ExitAsync();
     }
 }

@@ -81,5 +81,14 @@
   右键退出保存坐标后统一 `Shutdown`（`IsExiting` 令窗口关闭拦截放行），
   S8 无托盘期间工具条 Alt+F4 回主窗口避免不可见运行；`App` 关闭模式改为 `OnMainWindowClose`；
   `DetectorConsole` 扩展 `--clamp-check` 回归越界校正 5 例。关闭行为三选项与最小化自动转换随 S9 接入。
+- S9 托盘与形态切换：`TrayIconService` + `TrayViewModel` 常驻托盘图标（`H.NotifyIcon.Wpf` 2.3.2，
+  因 WPF-UI 4.3.0 不含托盘控件而选用纯 WPF 实现、不引入 WinForms），右键菜单提供显示主窗口 / 转为工具条 /
+  启动停止 / 暂停恢复 / 退出，双击与气泡点击恢复主窗口，悬浮提示随状态、目标与连续失败次数刷新；
+  新增 `Assets/app.ico`（256 PNG + 64/48/32/16 DIB 多尺寸、圆角外透明）同时作为 exe 文件图标与托盘图标；
+  `IWindowModeService` 新增 `CloseMainWindowAsync`：主窗口关闭先确认未保存修改，再按设置分派
+  退出 / 最小化到托盘 / 转为工具条（默认，读取当前配置故保存后立即生效）；主窗口最小化时按开关
+  自动转工具条（隐藏前还原最小化状态）；退出三入口（托盘菜单 / 工具条右键 / 关闭行为）统一
+  `ExitAsync` → `Shutdown`；`AlertNotificationService` 接入托盘气泡通知（受 `TrayNotifyEnabled`
+  实时开关），补齐 S7 遗留通道；设置页生效说明同步更新。
 
 <!-- 下一版本条目在此之后追加 -->

@@ -16,13 +16,21 @@
     <Company>unknownBase</Company>
     <Product>网络连通性监测工具</Product>
     <Copyright>© 2026 unknownBase</Copyright>
+    <!-- exe 文件图标（与托盘图标共用 Assets/app.ico） -->
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="H.NotifyIcon.Wpf" Version="2.3.2" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.21" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
     <PackageReference Include="WPF-UI" Version="4.3.0" />
+  </ItemGroup>
+
+  <!-- 托盘图标经 pack URI 引用，需以 WPF 资源嵌入 -->
+  <ItemGroup>
+    <Resource Include="Assets\app.ico" />
   </ItemGroup>
 
   <!-- tools/ 下为独立子项目（如 DetectorConsole），排除其源码不参与主工程编译 -->

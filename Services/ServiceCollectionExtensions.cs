@@ -60,6 +60,10 @@ namespace NetworkMonitorTool
             services.AddSingleton<ToolbarViewModel>();
             services.AddTransient<ToolbarWindow>();
 
+            // S9 托盘：常驻图标与菜单，启动时显式解析以创建图标
+            services.AddSingleton<TrayViewModel>();
+            services.AddSingleton<TrayIconService>();
+
             services.AddSingleton<DashboardViewModel>();
             services.AddSingleton<LogPageViewModel>();
             services.AddSingleton<AlertHistoryViewModel>();

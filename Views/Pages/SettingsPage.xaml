@@ -107,7 +107,7 @@
                         <CheckBox Content="托盘通知" Margin="0,4" IsChecked="{Binding TrayNotifyEnabled}" />
                         <CheckBox Content="将「端口失败」单独计入连续失败" Margin="0,4" IsChecked="{Binding CountPortFailure}" />
                         <TextBlock Style="{StaticResource HintTextStyle}"
-                                   Text="告警触发与展示在 S6 / S7 交付，本迭代仅保存配置" />
+                                   Text="应用内弹窗与托盘通知均已生效，保存后下一轮告警起按新开关送达" />
                     </StackPanel>
                 </Grid>
 

@@ -74,7 +74,7 @@ dotnet build .\NetworkMonitorTool.csproj -c Release
 - [ ] 行为变更已补充或更新 CHANGELOG.md。
 - [ ] 行为、配置项、状态定义变化已同步 docs/DESIGN.md（冲突时以设计文档为准）。
 - [ ] 手测覆盖对应 P0 用例；未覆盖的部分在 PR 或提交说明中注明。
-- [ ] 没有引入 WinForms 界面框架（托盘使用 WPF-UI NotifyIcon，不混用 WinForms Forms）。
+- [ ] 没有引入 WinForms 界面框架（托盘使用 H.NotifyIcon.Wpf 纯 WPF 实现，不混用 WinForms Forms）。
 
 ## 4. 版本与发布
 

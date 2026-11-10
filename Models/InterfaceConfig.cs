@@ -2,7 +2,7 @@ namespace NetworkMonitorTool.Models
 {
     /// <summary>
     /// 关闭主窗口时的行为（DESIGN 第三节 3，默认「转为工具条」）。
-    /// 行为落地在 S9 窗口形态与托盘迭代，S4 先提供设置项与持久化。
+    /// 由窗口形态服务在关闭主窗口时读取（保存后立即生效）。
     /// </summary>
     public enum CloseWindowBehavior
     {
@@ -17,8 +17,8 @@ namespace NetworkMonitorTool.Models
     }
 
     /// <summary>
-    /// e) 界面设置（DESIGN 第四节 4）。含关闭行为与工具条形态开关，
-    /// 实际生效逻辑分别由 S8 / S9 接入。
+    /// e) 界面设置（DESIGN 第四节 4）：关闭行为、工具条置顶与最小化自动转换，
+    /// 均由窗口形态服务在对应动作发生时读取。
     /// </summary>
     public sealed class InterfaceConfig
     {
