@@ -6,7 +6,7 @@
              xmlns:vm="clr-namespace:NetworkMonitorTool.ViewModels"
              mc:Ignorable="d"
              d:DataContext="{d:DesignInstance Type=vm:AlertHistoryViewModel}">
-    <!-- 告警历史页（DESIGN 第四节 3）：alert_record 分表、时间筛选、导出 CSV、清空（二次确认） -->
+    <!-- 告警历史页（DESIGN 第四节 3、DESIGN_S16 第八节 2）：alert_record 分表、目标 / 时间筛选、导出 CSV、清空（二次确认） -->
     <Grid Margin="20">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -19,7 +19,13 @@
 
         <!-- 筛选与操作条 -->
         <WrapPanel Grid.Row="1" Margin="0,10,0,0" Orientation="Horizontal">
-            <TextBlock Text="从" VerticalAlignment="Center" Margin="0,0,6,0" />
+            <TextBlock Text="目标" VerticalAlignment="Center" Margin="0,0,6,0" />
+            <ComboBox MinWidth="150" VerticalAlignment="Center" MaxWidth="240"
+                      ItemsSource="{Binding TargetFilterOptions}"
+                      SelectedItem="{Binding SelectedTargetFilter}"
+                      DisplayMemberPath="Label"
+                      ToolTip="按目标筛选（含已禁用目标，便于查历史）" />
+            <TextBlock Text="从" VerticalAlignment="Center" Margin="14,0,6,0" />
             <DatePicker Width="130" VerticalAlignment="Center" SelectedDate="{Binding FromDate}" />
             <TextBlock Text="到" VerticalAlignment="Center" Margin="8,0,6,0" />
             <DatePicker Width="130" VerticalAlignment="Center" SelectedDate="{Binding ToDate}" />
@@ -31,7 +37,7 @@
                     ToolTip="导出当前筛选结果（UTF-8 带 BOM，可用 Excel 打开）" />
             <Button Content="清空" Padding="10,5" Margin="8,0,0,0" VerticalAlignment="Center"
                     Command="{Binding ClearCommand}"
-                    ToolTip="清空界面记录与数据库全部告警历史（需确认）" />
+                    ToolTip="清空界面记录与数据库全部目标的告警历史（需确认）" />
         </WrapPanel>
 
         <!-- 条数与操作结果 / 行内提示 -->

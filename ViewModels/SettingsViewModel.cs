@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Text.Json;
@@ -50,6 +51,9 @@ namespace NetworkMonitorTool.ViewModels
                 new EnumOption<CloseWindowBehavior>(CloseWindowBehavior.Exit, "退出程序"),
             };
 
+            // 目标行草稿的属性变化参与脏标记判定（逐行编辑不经过本类属性）
+            TargetDrafts.CollectionChanged += (_, _) => RefreshDirtyState();
+
             LoadFrom(_config.Current);
         }
 
@@ -61,10 +65,13 @@ namespace NetworkMonitorTool.ViewModels
 
         public IReadOnlyList<EnumOption<CloseWindowBehavior>> CloseBehaviorOptions { get; }
 
-        // ---- a) 目标设置 ----
+        // ---- a) 目标设置（S16 多目标列表，DESIGN_S16_MULTITARGET 第八节 3）----
 
-        [ObservableProperty] private string _targetIp = string.Empty;
-        [ObservableProperty] private string _portText = string.Empty;
+        /// <summary>目标草稿集合：保存后生效，至少保留 1 个目标。</summary>
+        public ObservableCollection<TargetDraft> TargetDrafts { get; } = new();
+
+        /// <summary>目标列表级错误（如「至少需要一个监测目标」），展示在列表下方。</summary>
+        [ObservableProperty] private string _targetsError = string.Empty;
 
         // ---- b) 检测设置 ----
 
@@ -110,8 +117,6 @@ namespace NetworkMonitorTool.ViewModels
 
         // ---- 行内校验提示（DESIGN 第五节：不弹窗打断）----
 
-        [ObservableProperty] private string _targetIpError = string.Empty;
-        [ObservableProperty] private string _portError = string.Empty;
         [ObservableProperty] private string _intervalError = string.Empty;
         [ObservableProperty] private string _timeoutError = string.Empty;
         [ObservableProperty] private string _thresholdError = string.Empty;
@@ -181,6 +186,32 @@ namespace NetworkMonitorTool.ViewModels
         private bool CanCommitChanges() => IsDirty;
 
         [RelayCommand]
+        private void AddTarget()
+        {
+            TargetsError = string.Empty;
+            AddTargetDraft(new TargetDraft());
+        }
+
+        [RelayCommand]
+        private void RemoveTarget(TargetDraft? draft)
+        {
+            if (draft is null)
+            {
+                return;
+            }
+
+            if (TargetDrafts.Count <= 1)
+            {
+                TargetsError = "至少保留 1 个监测目标";
+                return;
+            }
+
+            TargetsError = string.Empty;
+            draft.PropertyChanged -= OnTargetDraftChanged;
+            TargetDrafts.Remove(draft);
+        }
+
+        [RelayCommand]
         private void BrowseDataDirectory()
         {
             var picked = _dialog.PickFolder(string.IsNullOrWhiteSpace(DataDirectory)
@@ -216,7 +247,7 @@ namespace NetworkMonitorTool.ViewModels
                 return false;
             }
 
-            var previousDetection = _config.Current.Detection;
+            var previousConfig = _config.Current;
             var effectiveDirectory = AppPaths.Root;
 
             // 数据目录变更：先迁移已有数据，失败保持原目录
@@ -247,12 +278,15 @@ namespace NetworkMonitorTool.ViewModels
             LoadDataDirectoryField(effectiveDirectory);
             LoadFrom(_config.Current);
 
-            await ApplyDetectionChangeAsync(previousDetection, draft.Detection);
+            await ApplyDetectionChangeAsync(previousConfig, draft);
             return true;
         }
 
-        /// <summary>运行中保存检测参数 → 按新配置重启调度周期（DESIGN 第五节 2）。</summary>
-        private async Task ApplyDetectionChangeAsync(DetectionConfig previous, DetectionConfig current)
+        /// <summary>
+        /// 运行中保存目标 / 检测参数 → 按新目标集合重启调度（DESIGN 第五节 2、DESIGN_S16_MULTITARGET 第六节）；
+        /// 目标全部禁用时仅停止调度，不启动。
+        /// </summary>
+        private async Task ApplyDetectionChangeAsync(MonitorConfig previous, MonitorConfig current)
         {
             if (_scheduler.State == SchedulerState.Stopped || !DetectionSectionChanged(previous, current))
             {
@@ -260,22 +294,50 @@ namespace NetworkMonitorTool.ViewModels
             }
 
             await _scheduler.StopAsync();
-            await _scheduler.StartAsync(current.ToDetectionOptions(), current.Interval);
+            if (!current.HasEnabledTarget)
+            {
+                return;
+            }
+
+            await _scheduler.StartAsync(current.GetEnabledDetectionOptions(), current.Detection.Interval);
         }
 
-        private static bool DetectionSectionChanged(DetectionConfig previous, DetectionConfig current)
-            => previous.TargetIp != current.TargetIp
-               || previous.Port != current.Port
-               || previous.TimeoutMs != current.TimeoutMs
-               || previous.PortPolicy != current.PortPolicy
-               || previous.Interval != current.Interval;
+        private static bool DetectionSectionChanged(MonitorConfig previous, MonitorConfig current)
+            => previous.Detection.TimeoutMs != current.Detection.TimeoutMs
+               || previous.Detection.PortPolicy != current.Detection.PortPolicy
+               || previous.Detection.Interval != current.Detection.Interval
+               || !TargetsEqual(previous.Targets, current.Targets);
+
+        /// <summary>目标集合逐项比较（Id 不变即视为同一目标，历史记录归属不会断）。</summary>
+        private static bool TargetsEqual(IReadOnlyList<TargetConfig> previous, IReadOnlyList<TargetConfig> current)
+        {
+            if (previous.Count != current.Count)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < previous.Count; i++)
+            {
+                var before = previous[i];
+                var after = current[i];
+                if (before.Id != after.Id
+                    || before.Enabled != after.Enabled
+                    || before.Port != after.Port
+                    || !string.Equals(before.TargetIp, after.TargetIp, StringComparison.Ordinal)
+                    || !string.Equals(before.Name, after.Name, StringComparison.Ordinal))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
 
         private MonitorConfig BuildDraft()
         {
             var draft = _config.Current.Clone();
 
-            draft.Detection.TargetIp = TargetIp.Trim();
-            draft.Detection.Port = ParseNullableInt(PortText, out _);
+            draft.Targets = TargetDrafts.Select(t => t.ToConfig()).ToList();
             draft.Detection.Interval = new DetectionInterval(
                 ParseInt(IntervalHoursText, 0), ParseInt(IntervalMinutesText, 0), ParseInt(IntervalSecondsText, 0));
             draft.Detection.TimeoutMs = ParseInt(TimeoutMsText, 0);
@@ -310,9 +372,14 @@ namespace NetworkMonitorTool.ViewModels
         {
             var errors = new List<ConfigValidationError>();
 
-            if (!string.IsNullOrWhiteSpace(PortText) && draft.Detection.Port is null)
+            // 端口文本非空但无法解析：行内提示所属目标（合法但越界的值交给配置服务拦截）
+            for (var i = 0; i < TargetDrafts.Count; i++)
             {
-                errors.Add(new("detection.port", "端口须为 1~65535 的整数，留空表示不检测端口"));
+                var draftPort = TargetDrafts[i].PortText;
+                if (!string.IsNullOrWhiteSpace(draftPort) && !int.TryParse(draftPort.Trim(), out _))
+                {
+                    errors.Add(new($"targets[{i}].port", "端口须为 1~65535 的整数，留空表示不检测端口"));
+                }
             }
 
             if (HasNonPositiveParseFailure(IntervalHoursText)
@@ -355,22 +422,47 @@ namespace NetworkMonitorTool.ViewModels
             {
                 switch (error.Field)
                 {
-                    case "detection.targetIp": TargetIpError = error.Message; break;
-                    case "detection.port": PortError = error.Message; break;
+                    case "targets": TargetsError = error.Message; break;
                     case "detection.interval": IntervalError = error.Message; break;
                     case "detection.timeoutMs": TimeoutError = error.Message; break;
                     case "alert.threshold": ThresholdError = error.Message; break;
                     case "storage.retentionDays": RetentionDaysError = error.Message; break;
                     case "storage.maxInMemoryRecords": MaxInMemoryError = error.Message; break;
                     case "storage.dataDirectory": DataDirectoryError = error.Message; break;
+                    default: ApplyTargetError(error); break;
                 }
             }
         }
 
+        /// <summary>目标行错误落到对应行（字段形如 targets[2].targetIp / targets[2].port）。</summary>
+        private void ApplyTargetError(ConfigValidationError error)
+        {
+            const string prefix = "targets[";
+            if (!error.Field.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            var close = error.Field.IndexOf(']');
+            if (close < 0
+                || !int.TryParse(error.Field.AsSpan(prefix.Length, close - prefix.Length), out var index)
+                || index < 0 || index >= TargetDrafts.Count)
+            {
+                return;
+            }
+
+            var draft = TargetDrafts[index];
+            draft.Error = string.IsNullOrEmpty(draft.Error) ? error.Message : $"{draft.Error}；{error.Message}";
+        }
+
         private void ClearInlineErrors()
         {
-            TargetIpError = PortError = IntervalError = TimeoutError = string.Empty;
+            TargetsError = IntervalError = TimeoutError = string.Empty;
             ThresholdError = RetentionDaysError = MaxInMemoryError = DataDirectoryError = string.Empty;
+            foreach (var draft in TargetDrafts)
+            {
+                draft.Error = string.Empty;
+            }
         }
 
         private void LoadFrom(MonitorConfig config)
@@ -378,8 +470,7 @@ namespace NetworkMonitorTool.ViewModels
             _loading = true;
             ClearInlineErrors();
 
-            TargetIp = config.Detection.TargetIp;
-            PortText = config.Detection.Port?.ToString() ?? string.Empty;
+            ReplaceTargetDrafts(config.Targets);
             IntervalHoursText = config.Detection.Interval.Hours.ToString();
             IntervalMinutesText = config.Detection.Interval.Minutes.ToString();
             IntervalSecondsText = config.Detection.Interval.Seconds.ToString();
@@ -404,6 +495,38 @@ namespace NetworkMonitorTool.ViewModels
 
             SaveMessage = string.Empty;
             _loading = false;
+            RefreshDirtyState();
+        }
+
+        /// <summary>用配置值重建目标行草稿（加载 / 放弃修改 / 恢复默认均走这里）。</summary>
+        private void ReplaceTargetDrafts(IReadOnlyList<TargetConfig> targets)
+        {
+            foreach (var draft in TargetDrafts)
+            {
+                draft.PropertyChanged -= OnTargetDraftChanged;
+            }
+
+            TargetDrafts.Clear();
+            foreach (var target in targets)
+            {
+                AddTargetDraft(new TargetDraft(target));
+            }
+        }
+
+        private void AddTargetDraft(TargetDraft draft)
+        {
+            draft.PropertyChanged += OnTargetDraftChanged;
+            TargetDrafts.Add(draft);
+        }
+
+        private void OnTargetDraftChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            // 行内错误提示变化不代表配置内容变化
+            if (e.PropertyName == nameof(TargetDraft.Error))
+            {
+                return;
+            }
+
             RefreshDirtyState();
         }
 
@@ -448,19 +571,6 @@ namespace NetworkMonitorTool.ViewModels
         private static int ParseInt(string? text, int fallback)
             => int.TryParse(text?.Trim(), out var value) ? value : fallback;
 
-        private static int? ParseNullableInt(string? text, out bool parsed)
-        {
-            var trimmed = text?.Trim();
-            if (string.IsNullOrEmpty(trimmed))
-            {
-                parsed = true;
-                return null;
-            }
-
-            parsed = int.TryParse(trimmed, out var value);
-            return parsed ? value : null;
-        }
-
         /// <summary>输入非空但解析失败，或解析出非正值 —— 均视为需要提示的非法数值。</summary>
         private static bool HasNonPositiveParseFailure(string? text)
             => !string.IsNullOrWhiteSpace(text) && (!int.TryParse(text.Trim(), out var value) || value < 0);
@@ -484,5 +594,44 @@ namespace NetworkMonitorTool.ViewModels
 
         /// <summary>下拉框选项：值为枚举，展示为中文（避免界面直接暴露英文枚举名）。</summary>
         public sealed record EnumOption<T>(T Value, string Label);
+
+        /// <summary>
+        /// 目标行草稿（DESIGN_S16_MULTITARGET 第三节）：保存时转为 <see cref="TargetConfig"/>；
+        /// Id 保留以保证编辑目标后历史记录仍归属同一目标。
+        /// </summary>
+        public sealed partial class TargetDraft : ObservableObject
+        {
+            public TargetDraft() : this(new TargetConfig())
+            {
+            }
+
+            public TargetDraft(TargetConfig target)
+            {
+                Id = string.IsNullOrWhiteSpace(target.Id) ? Guid.NewGuid().ToString("N") : target.Id;
+                _name = target.Name ?? string.Empty;
+                _targetIp = target.TargetIp;
+                _portText = target.Port?.ToString() ?? string.Empty;
+                _enabled = target.Enabled;
+            }
+
+            public string Id { get; }
+
+            [ObservableProperty] private string _name;
+            [ObservableProperty] private string _targetIp;
+            [ObservableProperty] private string _portText;
+            [ObservableProperty] private bool _enabled;
+
+            /// <summary>行内校验提示（地址非法 / 端口非法 / 重复目标）。</summary>
+            [ObservableProperty] private string _error = string.Empty;
+
+            public TargetConfig ToConfig() => new()
+            {
+                Id = Id,
+                Name = string.IsNullOrWhiteSpace(Name) ? null : Name.Trim(),
+                TargetIp = TargetIp.Trim(),
+                Port = int.TryParse(PortText?.Trim(), out var port) ? port : null,
+                Enabled = Enabled,
+            };
+        }
     }
 }

@@ -30,6 +30,9 @@ namespace NetworkMonitorTool.Models
         /// <summary>目标 IP 或主机名。</summary>
         public required string TargetIp { get; init; }
 
+        /// <summary>目标标识（S16 多目标）：对应 <see cref="TargetConfig.Id"/>，旧记录为迁移目标 default。</summary>
+        public string TargetId { get; init; } = string.Empty;
+
         /// <summary>目标端口，未配置端口时为 null。</summary>
         public int? Port { get; init; }
 

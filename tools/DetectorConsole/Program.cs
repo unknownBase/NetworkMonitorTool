@@ -20,6 +20,8 @@ using Microsoft.Extensions.Logging;
 //                                                                      （S6：阈值与端口失败计入开关覆盖，仅本次运行）
 //   DetectorConsole --export-alerts D:\Temp\alerts.csv                 （S7：导出告警历史并验证 BOM/转义/最近失败时间）
 //   DetectorConsole --clamp-check                                    （S8：工具条坐标越界校正纯函数回归）
+//   DetectorConsole --ip 10.255.255.1 --cycles 2                     （S16：单目标配置与多目标回归）
+//   DetectorConsole --targets "127.0.0.1,10.255.255.1" --cycles 2      （S16：多目标并行检测与每目标告警）
 
 var opts = ParseArgs(args);
 
@@ -56,9 +58,36 @@ var configService = provider.GetRequiredService<IConfigService>();
 var config = configService.Load();
 if (opts.OverridesDetection)
 {
-    // 命令行参数覆盖配置，便于无配置文件时试跑不同目标
-    config.Detection.TargetIp = opts.TargetIp;
-    config.Detection.Port = opts.Port;
+    // 命令行参数覆盖配置：整体替换为单目标（沿用 legacy Id，便于命中历史记录与存量数据）
+    config.Targets.Clear();
+    config.Targets.Add(new TargetConfig
+    {
+        Id = TargetConfig.LegacyTargetId,
+        TargetIp = opts.TargetIp,
+        Port = opts.Port,
+        Enabled = true,
+    });
+    config.Detection.TimeoutMs = opts.TimeoutMs;
+    config.Detection.PortPolicy = opts.PortPolicy;
+    config.Detection.Interval = opts.Interval;
+}
+
+// 多目标覆盖（仅本次运行）：--targets 逗号分隔的 IP[:端口] 列表，统一替换目标集合
+if (opts.TargetsOverride is { Count: > 0 } targetOverrides)
+{
+    config.Targets.Clear();
+    foreach (var item in targetOverrides)
+    {
+        var (ip, port) = SplitTarget(item);
+        // 稳定 Id：同一地址多次运行命中同一目标，便于验证每目标冷启动延续
+        config.Targets.Add(new TargetConfig
+        {
+            Id = BuildTargetId(ip, port),
+            TargetIp = ip,
+            Port = port,
+            Enabled = true,
+        });
+    }
     config.Detection.TimeoutMs = opts.TimeoutMs;
     config.Detection.PortPolicy = opts.PortPolicy;
     config.Detection.Interval = opts.Interval;
@@ -126,7 +155,7 @@ await store.InitializeAsync();
 var alertEngine = provider.GetRequiredService<IAlertService>();
 await alertEngine.InitializeAsync();
 alertEngine.AlertTriggered += (_, a) => Console.WriteLine(
-    $"  ! 告警触发 [{a.Timestamp:HH:mm:ss}] {a.TargetIp}:{a.Port?.ToString() ?? "-"}"
+    $"  ! 告警触发 [{a.Timestamp:HH:mm:ss}] [{a.TargetId}] {a.TargetIp}:{a.Port?.ToString() ?? "-"}"
     + $" 连续失败={a.ConsecutiveFailures} 最近失败=[{a.LastFailureAt?.ToString("HH:mm:ss") ?? "无"}]"
     + $" 送达={a.DeliveryMethods} 原因={a.ErrorSummary ?? "无"}");
 
@@ -134,13 +163,26 @@ Console.WriteLine("== NetworkMonitorTool 控制台验证（S2 检测核心 + S3 
 Console.WriteLine($"配置文件: {configService.ConfigFilePath}");
 Console.WriteLine($"数据目录: {AppPaths.Root}");
 Console.WriteLine($"数据库  : {AppPaths.DatabaseFile}（持久化 {(store.IsPersistent ? "可用" : "不可用，已降级为仅内存")}）");
-Console.WriteLine($"生效配置: 目标={config.Detection.TargetIp}"
-    + $" 端口={(config.Detection.Port?.ToString() ?? "无")}"
+Console.WriteLine($"生效配置: 目标 {config.Targets.Count} 个（启用 {config.Targets.Count(t => t.Enabled)}）"
     + $" 间隔={config.Detection.Interval} 超时={config.Detection.TimeoutMs}ms"
     + $" 策略={config.Detection.PortPolicy}"
     + $" | 告警阈值={config.Alert.ConsecutiveFailureThreshold}"
     + $" | 保留={config.Storage.RetentionDays}天 内存上限={config.Storage.MaxInMemoryRecords}"
     + $" | dataDirectory={(config.Storage.DataDirectory ?? "默认")}");
+foreach (var target in config.Targets)
+{
+    Console.WriteLine($"  · [{target.Id}] {target.DisplayName} → {target.Address}"
+        + (target.Enabled ? string.Empty : "（已禁用）"));
+}
+
+// Seed / 导出 / 单目标便捷输出统一以首个目标为基准
+if (config.Targets.Count == 0)
+{
+    Console.WriteLine("配置中没有目标，无法继续（至少需要一个目标）");
+    return 2;
+}
+
+var primary = config.Targets[0];
 
 if (opts.Seed)
 {
@@ -149,8 +191,9 @@ if (opts.Seed)
     var okExpired = await store.AppendDetectionRecordAsync(new DetectionRecord
     {
         Timestamp = expired,
-        TargetIp = config.Detection.TargetIp,
-        Port = config.Detection.Port,
+        TargetId = primary.Id,
+        TargetIp = primary.TargetIp,
+        Port = primary.Port,
         PingSuccess = false,
         LatencyMs = null,
         PortResult = PortProbeStatus.NotTested,
@@ -161,8 +204,9 @@ if (opts.Seed)
     var okAlert = await store.AppendAlertRecordAsync(new AlertRecord
     {
         Timestamp = DateTime.Now,
-        TargetIp = config.Detection.TargetIp,
-        Port = config.Detection.Port,
+        TargetId = primary.Id,
+        TargetIp = primary.TargetIp,
+        Port = primary.Port,
         ConsecutiveFailures = 3,
         ErrorSummary = "Seed：告警样本",
         DeliveryMethods = AlertDeliveryMethods.Popup | AlertDeliveryMethods.TrayNotify,
@@ -179,8 +223,13 @@ if (before.Count > 0)
     Console.WriteLine($"  最近一条: [{last.Timestamp:yyyy-MM-dd HH:mm:ss}] {last.TargetIp} 状态={last.Status}"
         + $" 连续失败={last.ConsecutiveFailures}");
 }
-var latestCount = await store.LoadLatestConsecutiveFailuresAsync();
-Console.WriteLine($"  冷启动可延续的连续失败次数: {latestCount?.ToString() ?? "无记录"}");
+var latestCount = await store.LoadLatestConsecutiveFailuresAsync(primary.Id);
+Console.WriteLine($"  冷启动可延续的连续失败次数（{primary.DisplayName}）: {latestCount?.ToString() ?? "无记录"}");
+foreach (var target in config.Targets.Skip(1))
+{
+    var count = await store.LoadLatestConsecutiveFailuresAsync(target.Id);
+    Console.WriteLine($"  冷启动可延续的连续失败次数（{target.DisplayName}）: {count?.ToString() ?? "无记录"}");
+}
 var alerts = await store.LoadAlertRecordsAsync(since);
 Console.WriteLine($"回读告警记录（分表 alert_record）：{alerts.Count} 条"
     + (alerts.Count > 0
@@ -197,13 +246,14 @@ if (opts.ExportTo is { Length: > 0 } exportTo)
     var bytes = await File.ReadAllBytesAsync(exportTo);
     var hasBom = bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF;
     Console.WriteLine($"导出 {exported} 条 → {exportTo}（UTF-8 BOM {(hasBom ? "有 ✓" : "缺失 ✗")}）");
-    Console.WriteLine($"默认文件名示例: {export.BuildDefaultFileName(config.Detection.TargetIp)}");
+    Console.WriteLine($"默认文件名示例: {export.BuildDefaultFileName(primary.Address)}");
 
     var escapePath = Path.ChangeExtension(exportTo, ".escape.csv");
     var tricky = new DetectionRecord
     {
         Timestamp = DateTime.Now,
-        TargetIp = config.Detection.TargetIp,
+        TargetId = primary.Id,
+        TargetIp = primary.TargetIp,
         PingSuccess = false,
         Status = DetectionStatus.Error,
         ErrorSummary = "a,\"b\"\nc",
@@ -223,13 +273,14 @@ if (opts.ExportAlertsTo is { Length: > 0 } exportAlertsTo)
     var bytes = await File.ReadAllBytesAsync(exportAlertsTo);
     var hasBom = bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF;
     Console.WriteLine($"导出告警 {exported} 条 → {exportAlertsTo}（UTF-8 BOM {(hasBom ? "有 ✓" : "缺失 ✗")}）");
-    Console.WriteLine($"默认文件名示例: {export.BuildAlertDefaultFileName(config.Detection.TargetIp)}");
+    Console.WriteLine($"默认文件名示例: {export.BuildAlertDefaultFileName(primary.Address)}");
 
     var escapePath = Path.ChangeExtension(exportAlertsTo, ".escape.csv");
     var tricky = new AlertRecord
     {
         Timestamp = DateTime.Now,
-        TargetIp = config.Detection.TargetIp,
+        TargetId = primary.Id,
+        TargetIp = primary.TargetIp,
         ConsecutiveFailures = 3,
         LastFailureAt = DateTime.Now.AddSeconds(-1),
         ErrorSummary = "a,\"b\"\nc",
@@ -263,21 +314,41 @@ if (opts.LoadOnly)
     Console.WriteLine($"按保留 {retention} 天清理：截止 {cleanup.Cutoff:yyyy-MM-dd}，"
         + $"删除检测 {cleanup.RemovedDetectionRecords} 条、告警 {cleanup.RemovedAlertRecords} 条");
     Console.WriteLine($"清理后回读: {(await store.LoadDetectionRecordsAsync(since)).Count} 条");
+
+    // S16：按目标回读（同时验证 target_id 列迁移 / 存量回填与按目标过滤）
+    foreach (var target in config.Targets)
+    {
+        var targetRecords = await store.LoadDetectionRecordsAsync(since, targetId: target.Id);
+        var targetAlerts = await store.LoadAlertRecordsAsync(since, target.Id);
+        Console.WriteLine($"  · [{target.DisplayName}] 检测 {targetRecords.Count} 条，告警 {targetAlerts.Count} 条");
+    }
+
     Console.WriteLine("--load-only 模式，不执行检测。");
     return 0;
 }
 
 var scheduler = provider.GetRequiredService<ISchedulerService>();
-var options = config.Detection.ToDetectionOptions();
+var targets = config.GetEnabledDetectionOptions();
+if (targets.Count == 0)
+{
+    Console.WriteLine("没有启用的目标，无法启动调度（DESIGN_S16 第六节）");
+    return 2;
+}
 
-Console.WriteLine($"目标: {options.TargetIp}"
-    + (options.HasValidPort ? $":{options.Port}" : string.Empty)
-    + $" | 策略: {options.PortPolicy} | 超时: {options.TimeoutMs}ms | 间隔: {config.Detection.Interval} | 轮数: {opts.Cycles}"
-    + (opts.OverridesDetection ? "（命令行覆盖配置）" : "（取配置文件）"));
+Console.WriteLine($"本轮目标 {targets.Count} 个（每周期并行检测）"
+    + $" | 策略: {config.Detection.PortPolicy} | 超时: {config.Detection.TimeoutMs}ms"
+    + $" | 间隔: {config.Detection.Interval} | 每目标轮数: {opts.Cycles}"
+    + (opts.OverridesDetection || opts.TargetsOverride is { Count: > 0 }
+        ? "（命令行覆盖配置）" : "（取配置文件）"));
+foreach (var option in targets)
+{
+    Console.WriteLine($"  · {option.TargetIp}{(option.HasValidPort ? $":{option.Port}" : string.Empty)}（{option.TargetId}）");
+}
 Console.WriteLine(new string('-', 72));
 
 var done = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-int completed = 0;
+var completedByTarget = new Dictionary<string, int>(StringComparer.Ordinal);
+var completedLock = new object();
 int degraded = 0;
 
 store.WriteFailed += (_, e) =>
@@ -290,17 +361,24 @@ store.WriteFailed += (_, e) =>
 scheduler.DetectionCompleted += (_, record) =>
 {
     PrintRecord(record);
-    if (Interlocked.Increment(ref completed) >= opts.Cycles)
+    lock (completedLock)
     {
-        done.TrySetResult(true);
+        completedByTarget.TryGetValue(record.TargetId, out var count);
+        completedByTarget[record.TargetId] = ++count;
+
+        // 多目标：每个目标都跑够轮数才算结束（并行检测时总条数会成倍增长）
+        if (targets.All(t => completedByTarget.TryGetValue(t.TargetId, out var n) && n >= opts.Cycles))
+        {
+            done.TrySetResult(true);
+        }
     }
 };
 
-await scheduler.StartAsync(options, config.Detection.Interval);
+await scheduler.StartAsync(targets, config.Detection.Interval);
 
 // 安全上限：轮数 × 间隔 + 两次超时余量，防止目标长时间无响应时挂死
 var maxWait = config.Detection.Interval.ToTimeSpan() * opts.Cycles
-    + TimeSpan.FromMilliseconds(options.TimeoutMs * 2L)
+    + TimeSpan.FromMilliseconds(config.Detection.TimeoutMs * 2L)
     + TimeSpan.FromSeconds(5);
 
 await Task.WhenAny(done.Task, Task.Delay(maxWait));
@@ -309,19 +387,32 @@ await scheduler.StopAsync();
 
 // 收口验证：本次写入后立即回读，再交由下一次运行（或 --load-only）验证跨进程不丢数据
 var after = await store.LoadDetectionRecordsAsync(since);
+int completed;
+bool everyTargetReached;
+lock (completedLock)
+{
+    completed = completedByTarget.Values.Sum();
+    everyTargetReached = targets.All(t => completedByTarget.TryGetValue(t.TargetId, out var n) && n >= opts.Cycles);
+}
+
 Console.WriteLine(new string('-', 72));
-Console.WriteLine($"共完成 {completed} 轮检测，调度状态: {scheduler.State}，写库降级 {degraded} 次。");
+Console.WriteLine($"共完成 {completed} 条检测记录（{targets.Count} 个目标），调度状态: {scheduler.State}，写库降级 {degraded} 次。");
 Console.WriteLine($"库中保留期记录: 运行前 {before.Count} 条 → 运行后 {after.Count} 条"
     + $"（新增 {after.Count - before.Count} 条，重启后可回读即 S3 收口标准）");
 var alertsAfter = await store.LoadAlertRecordsAsync(since);
-Console.WriteLine($"告警引擎: 连续失败={alertEngine.ConsecutiveFailures} 已告警={alertEngine.IsAlerting}；"
+Console.WriteLine($"告警引擎(汇总): 最高连续失败={alertEngine.ConsecutiveFailures} 已告警={alertEngine.IsAlerting}；"
     + $"告警历史 {alerts.Count} → {alertsAfter.Count} 条（新增 {alertsAfter.Count - alerts.Count} 条）");
+foreach (var target in config.Targets)
+{
+    Console.WriteLine($"  · [{target.DisplayName}] 连续失败={alertEngine.GetConsecutiveFailures(target.Id)}"
+        + $" 已告警={alertEngine.IsAlertingFor(target.Id)}");
+}
 
 // 收口验证：持久化可用时本次记录必须全部入库；已降级时只要检测不中断且触发了降级提示即为预期
 var persisted = after.Count - before.Count;
 Console.WriteLine(store.IsPersistent
-    ? $"结果: 完成 {completed} 轮、入库 {persisted} 条，跨进程回读不丢数据 ✓"
-    : $"结果: 完成 {completed} 轮、入库 {persisted} 条（持久化不可用，降级 {degraded} 次）——检测未被阻断 ✓");
+    ? $"结果: 完成 {completed} 条、入库 {persisted} 条，每目标轮数{(everyTargetReached ? "达标 ✓" : "未达标 ✗")}，跨进程回读不丢数据 ✓"
+    : $"结果: 完成 {completed} 条、入库 {persisted} 条（持久化不可用，降级 {degraded} 次）——检测未被阻断 ✓");
 
 return completed > 0 && (store.IsPersistent ? persisted == completed : degraded > 0) ? 0 : 2;
 
@@ -335,9 +426,28 @@ static void PrintRecord(DetectionRecord r)
         _ => "未检测",
     };
     Console.WriteLine(
-        $"[{r.Timestamp:HH:mm:ss.fff}] {r.TargetIp}({r.Port?.ToString() ?? "-"}) " +
+        $"[{r.Timestamp:HH:mm:ss.fff}] [{r.TargetId}] {r.TargetIp}({r.Port?.ToString() ?? "-"}) " +
         $"Ping={ping} | 端口={port} | 状态={r.Status} | 连续失败={r.ConsecutiveFailures}" +
         (r.ErrorSummary is null ? string.Empty : $" | 原因: {r.ErrorSummary}"));
+}
+
+/// <summary>多目标覆盖时的稳定 Id（同一地址重复运行命中同一目标，便于验证冷启动延续）。</summary>
+static string BuildTargetId(string ip, int? port)
+    => "cli-" + ip.Replace(':', '_') + (port is null ? string.Empty : $"-{port}");
+
+/// <summary>解析 --targets 项：形如 127.0.0.1:80（IPv6 字面量可写 [::1]:80）。</summary>
+static (string Ip, int? Port) SplitTarget(string value)
+{
+    var text = value.Trim();
+    var colon = text.LastIndexOf(':');
+    if (colon > 0
+        && int.TryParse(text[(colon + 1)..], out var port)
+        && port is >= 1 and <= 65535)
+    {
+        return (text[..colon].Trim('[', ']').Trim(), port);
+    }
+
+    return (text.Trim('[', ']').Trim(), null);
 }
 
 static RunOptions ParseArgs(string[] args)
@@ -352,6 +462,18 @@ static RunOptions ParseArgs(string[] args)
         switch (args[i].ToLowerInvariant())
         {
             case "--ip": o.TargetIp = Next() ?? o.TargetIp; o.OverridesDetection = true; break;
+            case "--targets":
+                {
+                    // S16：逗号分隔的多目标列表，统一替换目标集合（仅本次运行）
+                    var list = Next();
+                    if (!string.IsNullOrWhiteSpace(list))
+                    {
+                        o.TargetsOverride = list
+                            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                            .ToList();
+                    }
+                }
+                break;
             case "--port": if (int.TryParse(Next(), out var p)) { o.Port = p; o.OverridesDetection = true; } break;
             case "--timeout": if (int.TryParse(Next(), out var t)) { o.TimeoutMs = t; o.OverridesDetection = true; } break;
             case "--cycles": if (int.TryParse(Next(), out var c) && c > 0) o.Cycles = c; break;
@@ -416,6 +538,9 @@ internal sealed class RunOptions
 
     /// <summary>命令行是否显式给出了检测相关参数；否则沿用配置文件中的值。</summary>
     public bool OverridesDetection { get; set; }
+
+    /// <summary>多目标覆盖（S16）：--targets 逗号分隔的 IP[:端口]，为空表示不覆盖。</summary>
+    public List<string>? TargetsOverride { get; set; }
 
     /// <summary>仅回读历史与执行清理，不发起检测。</summary>
     public bool LoadOnly { get; set; }

@@ -4,10 +4,11 @@ using Microsoft.Extensions.Logging;
 namespace NetworkMonitorTool.Services
 {
     /// <summary>
-    /// 基于后台循环的调度实现：单循环串行触发检测，暂停用可等待门控阻断，
+    /// 基于后台循环的调度实现：单循环按周期并行驱动全部启用目标，暂停用可等待门控阻断，
     /// 停止用取消令牌收口。事件在后台线程回调，订阅方（UI）自行编组到界面线程。
-    /// 每条记录产生后先交告警引擎填写连续失败计数，再写入持久化存储后广播（DESIGN 第六节 2），
-    /// 写库失败降级不中断调度。
+    /// 每条记录产生后先交告警引擎填写连续失败计数（按目标分账），再写入持久化存储后广播
+    /// （DESIGN 第六节 2、DESIGN_S16_MULTITARGET 第六节），写库失败降级不中断调度，
+    /// 单个目标异常只记录日志，不影响其他目标。
     /// </summary>
     public sealed class SchedulerService : ISchedulerService
     {
@@ -25,7 +26,7 @@ namespace NetworkMonitorTool.Services
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         private volatile bool _paused;
 
-        private DetectionOptions? _options;
+        private IReadOnlyList<DetectionOptions> _targets = [];
         private DetectionInterval _interval;
 
         public SchedulerService(
@@ -49,9 +50,15 @@ namespace NetworkMonitorTool.Services
         public event EventHandler<SchedulerState>? StateChanged;
 
         public async Task StartAsync(
-            DetectionOptions options, DetectionInterval interval, CancellationToken cancellationToken = default)
+            IReadOnlyList<DetectionOptions> targets, DetectionInterval interval,
+            CancellationToken cancellationToken = default)
         {
-            ArgumentNullException.ThrowIfNull(options);
+            ArgumentNullException.ThrowIfNull(targets);
+            if (targets.Count == 0)
+            {
+                throw new ArgumentException("至少需要一个启用目标", nameof(targets));
+            }
+
             if (!interval.IsValid)
             {
                 throw new ArgumentOutOfRangeException(nameof(interval), "检测间隔必须大于 0");
@@ -64,7 +71,7 @@ namespace NetworkMonitorTool.Services
                     return; // 已在运行 / 暂停，忽略重复启动
                 }
 
-                _options = options;
+                _targets = targets.ToArray();
                 _interval = interval;
                 _cts = new CancellationTokenSource();
                 _paused = false;
@@ -82,7 +89,7 @@ namespace NetworkMonitorTool.Services
 
         private async Task RunLoopAsync(CancellationToken ct)
         {
-            var options = _options!;
+            var targets = _targets;
             var period = _interval.ToTimeSpan();
 
             try
@@ -91,10 +98,9 @@ namespace NetworkMonitorTool.Services
                 {
                     await WaitForResumeAsync(ct).ConfigureAwait(false);
 
-                    var record = await _detection.DetectOnceAsync(options, ct).ConfigureAwait(false);
-                    record = await _alerts.EvaluateAsync(record, ct).ConfigureAwait(false);
-                    await PersistAsync(record, ct).ConfigureAwait(false);
-                    DetectionCompleted?.Invoke(this, record);
+                    // 同一周期内所有目标并行检测：单目标超时 / 异常不阻塞其余目标
+                    var cycle = targets.Select(target => RunTargetAsync(target, ct)).ToArray();
+                    await Task.WhenAll(cycle).ConfigureAwait(false);
 
                     await Task.Delay(period, ct).ConfigureAwait(false);
                 }
@@ -116,6 +122,26 @@ namespace NetworkMonitorTool.Services
                         SetState(SchedulerState.Stopped);
                     }
                 }
+            }
+        }
+
+        /// <summary>单目标一轮：检测 → 告警判定 → 落库 → 广播；异常仅终止本目标本轮的后续步骤。</summary>
+        private async Task RunTargetAsync(DetectionOptions target, CancellationToken ct)
+        {
+            try
+            {
+                var record = await _detection.DetectOnceAsync(target, ct).ConfigureAwait(false);
+                record = await _alerts.EvaluateAsync(record, ct).ConfigureAwait(false);
+                await PersistAsync(record, ct).ConfigureAwait(false);
+                DetectionCompleted?.Invoke(this, record);
+            }
+            catch (OperationCanceledException)
+            {
+                throw; // 停止 / 取消由循环统一处理
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "目标 {Target} 检测链异常，本轮跳过，调度继续", target.TargetIp);
             }
         }
 

@@ -6,7 +6,7 @@
              xmlns:vm="clr-namespace:NetworkMonitorTool.ViewModels"
              mc:Ignorable="d"
              d:DataContext="{d:DesignInstance Type=vm:SettingsViewModel}">
-    <!-- 设置页（DESIGN 第四节 4）：六组分区 + 底部保存 / 恢复默认 / 取消，校验失败行内提示 -->
+    <!-- 设置页（DESIGN 第四节 4、DESIGN_S16 第八节 3）：六组分区 + 底部保存 / 恢复默认 / 取消，校验失败行内提示 -->
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
@@ -16,31 +16,49 @@
         <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
             <StackPanel Margin="20,20,20,8" MaxWidth="780" HorizontalAlignment="Stretch">
 
-                <!-- a) 目标设置 -->
+                <!-- a) 目标设置（S16 多目标列表：名称 / 地址 / 端口 / 启用，可新增删除） -->
                 <TextBlock Style="{StaticResource SectionTitleStyle}" Text="a) 目标设置" />
-                <Grid Margin="0,8,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="210" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-
-                    <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource FieldLabelStyle}" Text="目标 IP / 主机名" />
-                    <StackPanel Grid.Row="0" Grid.Column="1">
-                        <TextBox Style="{StaticResource InputBoxStyle}" Text="{Binding TargetIp, UpdateSourceTrigger=PropertyChanged}" />
-                        <TextBlock Style="{StaticResource InlineErrorStyle}" Text="{Binding TargetIpError}" />
+                <StackPanel Margin="0,8,0,0">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4" Opacity="0.65" TextElement.FontSize="12">
+                        <TextBlock Text="名称（可空）" Width="150" Margin="0,0,8,0" />
+                        <TextBlock Text="IP / 主机名" Width="190" Margin="0,0,8,0" />
+                        <TextBlock Text="端口（可空）" Width="120" Margin="0,0,8,0" />
+                        <TextBlock Text="启用" Width="60" />
                     </StackPanel>
 
-                    <TextBlock Grid.Row="1" Grid.Column="0" Style="{StaticResource FieldLabelStyle}" Text="端口（可空）" />
-                    <StackPanel Grid.Row="1" Grid.Column="1">
-                        <TextBox Style="{StaticResource InputBoxStyle}" Text="{Binding PortText, UpdateSourceTrigger=PropertyChanged}" />
-                        <TextBlock Style="{StaticResource HintTextStyle}" Text="留空表示不检测端口" />
-                        <TextBlock Style="{StaticResource InlineErrorStyle}" Text="{Binding PortError}" />
+                    <ItemsControl ItemsSource="{Binding TargetDrafts}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="0,2">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBox Width="150" Margin="0,0,8,0" Padding="6,4"
+                                                 Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                                                 ToolTip="显示名，留空时以地址显示" />
+                                        <TextBox Width="190" Margin="0,0,8,0" Padding="6,4"
+                                                 Text="{Binding TargetIp, UpdateSourceTrigger=PropertyChanged}"
+                                                 ToolTip="IP 或主机名" />
+                                        <TextBox Width="120" Margin="0,0,8,0" Padding="6,4"
+                                                 Text="{Binding PortText, UpdateSourceTrigger=PropertyChanged}"
+                                                 ToolTip="1~65535，留空表示不检测端口" />
+                                        <CheckBox Content="" Width="60" VerticalAlignment="Center"
+                                                  IsChecked="{Binding Enabled}" ToolTip="参与调度" />
+                                        <Button Content="删除" Padding="10,4" Margin="6,0,0,0"
+                                                Command="{Binding DataContext.RemoveTargetCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}" />
+                                    </StackPanel>
+                                    <TextBlock Style="{StaticResource InlineErrorStyle}" Text="{Binding Error}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <Button Content="新增目标" Padding="10,4" Command="{Binding AddTargetCommand}" />
+                        <TextBlock Style="{StaticResource HintTextStyle}" Margin="10,0,0,0" VerticalAlignment="Center"
+                                   Text="至少保留 1 个目标；增删改在保存后生效，运行中将按新目标集合重启调度" />
                     </StackPanel>
-                </Grid>
+                    <TextBlock Style="{StaticResource InlineErrorStyle}" Text="{Binding TargetsError}" />
+                </StackPanel>
 
                 <!-- b) 检测设置 -->
                 <TextBlock Style="{StaticResource SectionTitleStyle}" Margin="0,22,0,0" Text="b) 检测设置" />

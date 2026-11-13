@@ -70,6 +70,7 @@ namespace NetworkMonitorTool.Services
                         CREATE TABLE IF NOT EXISTS {DetectTableName} (
                             id                   INTEGER PRIMARY KEY AUTOINCREMENT,
                             timestamp            INTEGER NOT NULL,
+                            target_id            TEXT    NOT NULL DEFAULT '',
                             target_ip            TEXT    NOT NULL,
                             port                 INTEGER NULL,
                             ping_success         INTEGER NOT NULL,
@@ -79,8 +80,6 @@ namespace NetworkMonitorTool.Services
                             error_summary        TEXT    NULL,
                             consecutive_failures INTEGER NOT NULL DEFAULT 0
                         );
-                        CREATE INDEX IF NOT EXISTS idx_{DetectTableName}_timestamp
-                            ON {DetectTableName}(timestamp);
                         """;
                     await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
                 }
@@ -91,41 +90,52 @@ namespace NetworkMonitorTool.Services
                         CREATE TABLE IF NOT EXISTS {AlertTableName} (
                             id                   INTEGER PRIMARY KEY AUTOINCREMENT,
                             timestamp            INTEGER NOT NULL,
+                            target_id            TEXT    NOT NULL DEFAULT '',
                             target_ip            TEXT    NOT NULL,
                             port                 INTEGER NULL,
                             consecutive_failures INTEGER NOT NULL,
                             error_summary        TEXT    NULL,
                             delivery_methods     INTEGER NOT NULL
                         );
-                        CREATE INDEX IF NOT EXISTS idx_{AlertTableName}_timestamp
-                            ON {AlertTableName}(timestamp);
                         """;
                     await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
                 }
 
-                // S7：旧库补充最近失败时间列（新库同样经此路径补齐，PRAGMA 探测保证幂等）
-                await using (var probe = conn.CreateCommand())
-                {
-                    probe.CommandText = $"PRAGMA table_info({AlertTableName});";
-                    var hasColumn = false;
-                    await using (var reader = await probe.ExecuteReaderAsync(ct).ConfigureAwait(false))
-                    {
-                        while (await reader.ReadAsync(ct).ConfigureAwait(false))
-                        {
-                            if (reader.GetString(1) == "last_failure_at")
-                            {
-                                hasColumn = true;
-                                break;
-                            }
-                        }
-                    }
+                // S16：旧库补充目标列（幂等：PRAGMA 探测后再 ALTER）
+                await EnsureColumnAsync(conn, DetectTableName, "target_id", "TEXT NOT NULL DEFAULT ''", ct)
+                    .ConfigureAwait(false);
+                await EnsureColumnAsync(conn, AlertTableName, "target_id", "TEXT NOT NULL DEFAULT ''", ct)
+                    .ConfigureAwait(false);
 
-                    if (!hasColumn)
-                    {
-                        await using var alter = conn.CreateCommand();
-                        alter.CommandText = $"ALTER TABLE {AlertTableName} ADD COLUMN last_failure_at INTEGER NULL;";
-                        await alter.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
-                    }
+                // S7：旧库补充最近失败时间列（新库同样经此路径补齐，PRAGMA 探测保证幂等）
+                await EnsureColumnAsync(conn, AlertTableName, "last_failure_at", "INTEGER NULL", ct)
+                    .ConfigureAwait(false);
+
+                // S16：存量记录归属 v1 迁移目标（与 TargetConfig.LegacyTargetId 对齐，幂等）
+                await using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = $"""
+                        UPDATE {DetectTableName} SET target_id = $legacy WHERE target_id = '';
+                        UPDATE {AlertTableName} SET target_id = $legacy WHERE target_id = '';
+                        """;
+                    cmd.Parameters.AddWithValue("$legacy", TargetConfig.LegacyTargetId);
+                    await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+                }
+
+                // 建索引须在补列之后：旧库才有 target_id 可索引
+                await using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = $"""
+                        CREATE INDEX IF NOT EXISTS idx_{DetectTableName}_timestamp
+                            ON {DetectTableName}(timestamp);
+                        CREATE INDEX IF NOT EXISTS idx_{DetectTableName}_target_timestamp
+                            ON {DetectTableName}(target_id, timestamp);
+                        CREATE INDEX IF NOT EXISTS idx_{AlertTableName}_timestamp
+                            ON {AlertTableName}(timestamp);
+                        CREATE INDEX IF NOT EXISTS idx_{AlertTableName}_target_timestamp
+                            ON {AlertTableName}(target_id, timestamp);
+                        """;
+                    await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
                 }
 
                 SetPersistent(true);
@@ -137,6 +147,35 @@ namespace NetworkMonitorTool.Services
                 _logger?.LogError(ex, "SQLite 初始化失败，持久化降级为仅内存");
                 return false;
             }
+        }
+
+        /// <summary>列不存在时补充（幂等）；调用方须持有 <paramref name="_gate"/>。</summary>
+        private static async Task EnsureColumnAsync(
+            SqliteConnection conn, string table, string column, string definition, CancellationToken ct)
+        {
+            var hasColumn = false;
+            await using (var probe = conn.CreateCommand())
+            {
+                probe.CommandText = $"PRAGMA table_info({table});";
+                await using var reader = await probe.ExecuteReaderAsync(ct).ConfigureAwait(false);
+                while (await reader.ReadAsync(ct).ConfigureAwait(false))
+                {
+                    if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase))
+                    {
+                        hasColumn = true;
+                        break;
+                    }
+                }
+            }
+
+            if (hasColumn)
+            {
+                return;
+            }
+
+            await using var alter = conn.CreateCommand();
+            alter.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {definition};";
+            await alter.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
 
         public async Task<bool> AppendDetectionRecordAsync(
@@ -157,11 +196,12 @@ namespace NetworkMonitorTool.Services
                 await using var cmd = conn.CreateCommand();
                 cmd.CommandText = $"""
                     INSERT INTO {DetectTableName}
-                        (timestamp, target_ip, port, ping_success, latency_ms,
+                        (timestamp, target_id, target_ip, port, ping_success, latency_ms,
                          port_result, status, error_summary, consecutive_failures)
-                    VALUES ($ts, $ip, $port, $ping, $latency, $portResult, $status, $error, $consecutive);
+                    VALUES ($ts, $targetId, $ip, $port, $ping, $latency, $portResult, $status, $error, $consecutive);
                     """;
                 cmd.Parameters.AddWithValue("$ts", record.Timestamp.Ticks);
+                cmd.Parameters.AddWithValue("$targetId", record.TargetId);
                 cmd.Parameters.AddWithValue("$ip", record.TargetIp);
                 AddNullableInt(cmd, "$port", record.Port);
                 cmd.Parameters.AddWithValue("$ping", record.PingSuccess ? 1 : 0);
@@ -202,10 +242,11 @@ namespace NetworkMonitorTool.Services
                 await using var cmd = conn.CreateCommand();
                 cmd.CommandText = $"""
                     INSERT INTO {AlertTableName}
-                        (timestamp, target_ip, port, consecutive_failures, error_summary, delivery_methods, last_failure_at)
-                    VALUES ($ts, $ip, $port, $consecutive, $error, $methods, $lastFailure);
+                        (timestamp, target_id, target_ip, port, consecutive_failures, error_summary, delivery_methods, last_failure_at)
+                    VALUES ($ts, $targetId, $ip, $port, $consecutive, $error, $methods, $lastFailure);
                     """;
                 cmd.Parameters.AddWithValue("$ts", record.Timestamp.Ticks);
+                cmd.Parameters.AddWithValue("$targetId", record.TargetId);
                 cmd.Parameters.AddWithValue("$ip", record.TargetIp);
                 AddNullableInt(cmd, "$port", record.Port);
                 cmd.Parameters.AddWithValue("$consecutive", record.ConsecutiveFailures);
@@ -227,7 +268,8 @@ namespace NetworkMonitorTool.Services
         }
 
         public async Task<IReadOnlyList<DetectionRecord>> LoadDetectionRecordsAsync(
-            DateTime since, int? maxCount = null, CancellationToken cancellationToken = default)
+            DateTime since, int? maxCount = null, string? targetId = null,
+            CancellationToken cancellationToken = default)
         {
             await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
@@ -242,14 +284,16 @@ namespace NetworkMonitorTool.Services
                 await using var cmd = conn.CreateCommand();
                 // maxCount 取“最近 N 条”：先按时间倒序截断，读完后翻正为升序返回
                 cmd.CommandText = $"""
-                    SELECT timestamp, target_ip, port, ping_success, latency_ms,
+                    SELECT timestamp, target_id, target_ip, port, ping_success, latency_ms,
                            port_result, status, error_summary, consecutive_failures
                     FROM {DetectTableName}
                     WHERE timestamp >= $since
+                      AND ($targetId IS NULL OR target_id = $targetId)
                     ORDER BY timestamp DESC
                     {(maxCount is > 0 ? "LIMIT $limit" : string.Empty)};
                     """;
                 cmd.Parameters.AddWithValue("$since", since.Ticks);
+                cmd.Parameters.AddWithValue("$targetId", (object?)targetId ?? DBNull.Value);
                 if (maxCount is > 0)
                 {
                     cmd.Parameters.AddWithValue("$limit", maxCount.Value);
@@ -261,14 +305,15 @@ namespace NetworkMonitorTool.Services
                     list.Add(new DetectionRecord
                     {
                         Timestamp = new DateTime(reader.GetInt64(0)),
-                        TargetIp = reader.GetString(1),
-                        Port = ReadNullableInt(reader, 2),
-                        PingSuccess = reader.GetInt32(3) != 0,
-                        LatencyMs = ReadNullableInt(reader, 4),
-                        PortResult = (PortProbeStatus)reader.GetInt32(5),
-                        Status = (DetectionStatus)reader.GetInt32(6),
-                        ErrorSummary = reader.IsDBNull(7) ? null : reader.GetString(7),
-                        ConsecutiveFailures = reader.GetInt32(8),
+                        TargetId = reader.GetString(1),
+                        TargetIp = reader.GetString(2),
+                        Port = ReadNullableInt(reader, 3),
+                        PingSuccess = reader.GetInt32(4) != 0,
+                        LatencyMs = ReadNullableInt(reader, 5),
+                        PortResult = (PortProbeStatus)reader.GetInt32(6),
+                        Status = (DetectionStatus)reader.GetInt32(7),
+                        ErrorSummary = reader.IsDBNull(8) ? null : reader.GetString(8),
+                        ConsecutiveFailures = reader.GetInt32(9),
                     });
                 }
 
@@ -287,7 +332,7 @@ namespace NetworkMonitorTool.Services
         }
 
         public async Task<IReadOnlyList<AlertRecord>> LoadAlertRecordsAsync(
-            DateTime since, CancellationToken cancellationToken = default)
+            DateTime since, string? targetId = null, CancellationToken cancellationToken = default)
         {
             await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
@@ -301,12 +346,14 @@ namespace NetworkMonitorTool.Services
                 await using var conn = await OpenAsync(cancellationToken).ConfigureAwait(false);
                 await using var cmd = conn.CreateCommand();
                 cmd.CommandText = $"""
-                    SELECT timestamp, target_ip, port, consecutive_failures, error_summary, delivery_methods, last_failure_at
+                    SELECT timestamp, target_id, target_ip, port, consecutive_failures, error_summary, delivery_methods, last_failure_at
                     FROM {AlertTableName}
                     WHERE timestamp >= $since
+                      AND ($targetId IS NULL OR target_id = $targetId)
                     ORDER BY timestamp ASC;
                     """;
                 cmd.Parameters.AddWithValue("$since", since.Ticks);
+                cmd.Parameters.AddWithValue("$targetId", (object?)targetId ?? DBNull.Value);
 
                 await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
                 while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
@@ -314,12 +361,13 @@ namespace NetworkMonitorTool.Services
                     list.Add(new AlertRecord
                     {
                         Timestamp = new DateTime(reader.GetInt64(0)),
-                        TargetIp = reader.GetString(1),
-                        Port = ReadNullableInt(reader, 2),
-                        ConsecutiveFailures = reader.GetInt32(3),
-                        ErrorSummary = reader.IsDBNull(4) ? null : reader.GetString(4),
-                        DeliveryMethods = (AlertDeliveryMethods)reader.GetInt32(5),
-                        LastFailureAt = reader.IsDBNull(6) ? null : new DateTime(reader.GetInt64(6)),
+                        TargetId = reader.GetString(1),
+                        TargetIp = reader.GetString(2),
+                        Port = ReadNullableInt(reader, 3),
+                        ConsecutiveFailures = reader.GetInt32(4),
+                        ErrorSummary = reader.IsDBNull(5) ? null : reader.GetString(5),
+                        DeliveryMethods = (AlertDeliveryMethods)reader.GetInt32(6),
+                        LastFailureAt = reader.IsDBNull(7) ? null : new DateTime(reader.GetInt64(7)),
                     });
                 }
 
@@ -336,7 +384,8 @@ namespace NetworkMonitorTool.Services
             }
         }
 
-        public async Task<int?> LoadLatestConsecutiveFailuresAsync(CancellationToken cancellationToken = default)
+        public async Task<int?> LoadLatestConsecutiveFailuresAsync(
+            string targetId, CancellationToken cancellationToken = default)
         {
             await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
@@ -350,8 +399,10 @@ namespace NetworkMonitorTool.Services
                 await using var cmd = conn.CreateCommand();
                 cmd.CommandText = $"""
                     SELECT consecutive_failures FROM {DetectTableName}
+                    WHERE target_id = $targetId
                     ORDER BY timestamp DESC, id DESC LIMIT 1;
                     """;
+                cmd.Parameters.AddWithValue("$targetId", targetId);
                 var value = await cmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
                 return value is null or DBNull ? null : Convert.ToInt32(value);
             }

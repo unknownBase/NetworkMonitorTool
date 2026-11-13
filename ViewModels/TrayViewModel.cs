@@ -6,9 +6,9 @@ using NetworkMonitorTool.Services;
 namespace NetworkMonitorTool.ViewModels
 {
     /// <summary>
-    /// 托盘视图模型（DESIGN 第三节 3.4）：常驻图标的提示文案与右键菜单命令。
+    /// 托盘视图模型（DESIGN 第三节 3.4、DESIGN_S16_MULTITARGET 第八节 5）：常驻图标的提示文案与右键菜单命令。
     /// 状态绑定全局状态中心，与主窗口 / 工具条含义一致（含「告警中」文案）；
-    /// 菜单提供显示主窗口、转为工具条、启动 / 停止 / 暂停 / 恢复检测与退出。
+    /// 菜单提供显示主窗口、转为工具条、启动 / 停止 / 暂停 / 恢复检测与退出，启停作用于全部启用目标。
     /// </summary>
     public sealed partial class TrayViewModel : ObservableObject
     {
@@ -51,17 +51,17 @@ namespace NetworkMonitorTool.ViewModels
         [NotifyCanExecuteChangedFor(nameof(ResumeCommand))]
         private SchedulerState _state;
 
-        /// <summary>托盘悬浮提示：状态 · 目标 · 连续失败次数（随检测与配置变化刷新）。</summary>
+        /// <summary>托盘悬浮提示：状态 · 目标数量 · 最高连续失败次数（随检测与配置变化刷新）。</summary>
         [ObservableProperty] private string _toolTipText = string.Empty;
 
         [RelayCommand(CanExecute = nameof(CanStart))]
         private async Task StartAsync()
         {
-            var detection = _config.Current.Detection;
-            await _scheduler.StartAsync(detection.ToDetectionOptions(), detection.Interval);
+            var config = _config.Current;
+            await _scheduler.StartAsync(config.GetEnabledDetectionOptions(), config.Detection.Interval);
         }
 
-        private bool CanStart() => State == SchedulerState.Stopped;
+        private bool CanStart() => State == SchedulerState.Stopped && _config.Current.HasEnabledTarget;
 
         [RelayCommand(CanExecute = nameof(CanStop))]
         private async Task StopAsync() => await _scheduler.StopAsync();
@@ -92,11 +92,9 @@ namespace NetworkMonitorTool.ViewModels
 
         private string BuildToolTip()
         {
-            var detection = _config.Current.Detection;
-            var target = detection.Port is { } port
-                ? $"{detection.TargetIp}:{port}"
-                : detection.TargetIp;
-            return $"网络连通性监测工具｜{Status.StatusText}｜{target}｜连续失败 {Status.ConsecutiveFailuresText}";
+            var config = _config.Current;
+            var enabled = config.Targets.Count(t => t.Enabled);
+            return $"网络连通性监测工具｜{Status.StatusText}｜目标 {enabled}/{config.Targets.Count} 个启用｜最高连续失败 {Status.ConsecutiveFailuresText}";
         }
     }
 }

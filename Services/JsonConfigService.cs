@@ -52,7 +52,7 @@ namespace NetworkMonitorTool.Services
         public MonitorConfig Load()
         {
             var config = ReadFromDisk() ?? MonitorConfig.CreateDefault();
-            config.ConfigVersion = MonitorConfig.CurrentVersion;
+            Migrate(config);
 
             // 数据目录：合法则生效，非法 / 不可用则回退默认目录，保证可启动（DESIGN 第十一节 1）
             AppPaths.Root = ResolveDataDirectory(config.Storage.DataDirectory);
@@ -65,6 +65,7 @@ namespace NetworkMonitorTool.Services
         {
             ArgumentNullException.ThrowIfNull(config);
 
+            Migrate(config);
             config.ConfigVersion = MonitorConfig.CurrentVersion;
             AppPaths.Root = ResolveDataDirectory(config.Storage.DataDirectory);
             _current = config;
@@ -101,19 +102,7 @@ namespace NetworkMonitorTool.Services
 
             var errors = new List<ConfigValidationError>();
 
-            if (string.IsNullOrWhiteSpace(config.Detection.TargetIp))
-            {
-                errors.Add(new("detection.targetIp", "目标地址不能为空"));
-            }
-            else if (!IsValidTarget(config.Detection.TargetIp))
-            {
-                errors.Add(new("detection.targetIp", "目标地址不是合法的 IP 或主机名"));
-            }
-
-            if (config.Detection.Port is < 1 or > 65535)
-            {
-                errors.Add(new("detection.port", "端口须在 1~65535 之间，留空表示不检测端口"));
-            }
+            ValidateTargets(config, errors);
 
             if (!config.Detection.Interval.IsValid)
             {
@@ -149,6 +138,68 @@ namespace NetworkMonitorTool.Services
         }
 
         public MonitorConfig CreateDefault() => MonitorConfig.CreateDefault();
+
+        /// <summary>
+        /// 配置结构迁移（DESIGN_S16_MULTITARGET 第四节）：
+        /// v1 无 targets 时用旧单目标字段构造唯一目标（Id 固定为 default），随后清理迁移输入字段。
+        /// 幂等，重复读取不会重复创建目标。
+        /// </summary>
+        private static void Migrate(MonitorConfig config)
+        {
+            config.Detection ??= new DetectionConfig();
+            config.Targets ??= new List<TargetConfig>();
+
+            if (config.Targets.Count == 0)
+            {
+                var legacyIp = config.Detection.LegacyTargetIp?.Trim();
+                config.Targets.Add(new TargetConfig
+                {
+                    Id = TargetConfig.LegacyTargetId,
+                    TargetIp = string.IsNullOrEmpty(legacyIp) ? "127.0.0.1" : legacyIp,
+                    Port = config.Detection.LegacyPort is >= 1 and <= 65535
+                        ? config.Detection.LegacyPort
+                        : null,
+                });
+            }
+
+            // 迁移输入用完即弃：不再写出 detection.targetIp / port
+            config.Detection.LegacyTargetIp = null;
+            config.Detection.LegacyPort = null;
+            config.ConfigVersion = MonitorConfig.CurrentVersion;
+        }
+
+        /// <summary>目标列表校验：至少一个、地址合法、端口范围、同一地址+端口不重复。</summary>
+        private static void ValidateTargets(MonitorConfig config, List<ConfigValidationError> errors)
+        {
+            if (config.Targets.Count == 0)
+            {
+                errors.Add(new("targets", "至少需要一个监测目标"));
+                return;
+            }
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (var i = 0; i < config.Targets.Count; i++)
+            {
+                var target = config.Targets[i];
+                if (string.IsNullOrWhiteSpace(target.TargetIp))
+                {
+                    errors.Add(new($"targets[{i}].targetIp", "目标地址不能为空"));
+                }
+                else if (!IsValidTarget(target.TargetIp))
+                {
+                    errors.Add(new($"targets[{i}].targetIp", "目标地址不是合法的 IP 或主机名"));
+                }
+
+                if (target.Port is < 1 or > 65535)
+                {
+                    errors.Add(new($"targets[{i}].port", "端口须在 1~65535 之间，留空表示不检测端口"));
+                }
+                else if (!seen.Add($"{target.TargetIp.Trim()}:{target.Port?.ToString() ?? string.Empty}"))
+                {
+                    errors.Add(new($"targets[{i}].targetIp", "同一目标地址与端口不能重复添加"));
+                }
+            }
+        }
 
         /// <summary>读取配置文件；文件缺失、损坏或反序列化失败时返回 null（由调用方取默认）。</summary>
         private MonitorConfig? ReadFromDisk()

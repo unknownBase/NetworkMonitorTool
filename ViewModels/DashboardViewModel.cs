@@ -7,8 +7,8 @@ using NetworkMonitorTool.Services;
 namespace NetworkMonitorTool.ViewModels
 {
     /// <summary>
-    /// 仪表盘页视图模型（DESIGN 第四节 1）：状态大标识、目标与检测参数摘要、
-    /// 最近检测时间 / 延迟 / 连续失败次数、快捷操作、最近记录简表与跳转日志页。
+    /// 仪表盘页视图模型（DESIGN 第四节 1、DESIGN_S16_MULTITARGET 第八节 1）：
+    /// 汇总状态大标识、目标状态列表、检测参数摘要、快捷操作、最近记录简表与跳转日志页。
     /// 不放置详细配置与导出操作（分别在设置页、日志页）。
     /// </summary>
     public sealed partial class DashboardViewModel : PageViewModelBase
@@ -43,7 +43,11 @@ namespace NetworkMonitorTool.ViewModels
                 }
             };
             status.RecordReceived += (_, record) => OnRecordReceived(record);
-            config.ConfigChanged += (_, _) => RefreshSummary();
+            config.ConfigChanged += (_, _) =>
+            {
+                RefreshSummary();
+                StartCommand.NotifyCanExecuteChanged();
+            };
 
             RefreshSummary();
         }
@@ -54,6 +58,9 @@ namespace NetworkMonitorTool.ViewModels
 
         /// <summary>全局状态（XAML 直接绑定其文案与取色，保证四处含义一致）。</summary>
         public IRuntimeStatusService Status { get; }
+
+        /// <summary>目标状态列表（与配置目标同序，界面线程更新，S16）。</summary>
+        public IReadOnlyList<TargetStatus> TargetStatuses => Status.Targets;
 
         /// <summary>最近记录简表（时间倒序，最多 <see cref="PreviewRecordCount"/> 条）。</summary>
         public ObservableCollection<DetectionRecord> RecentRecords { get; } = new();
@@ -107,15 +114,15 @@ namespace NetworkMonitorTool.ViewModels
             OnPropertyChanged(nameof(HasRecentRecords));
         }
 
-        /// <summary>启动调度：按当前生效配置立即执行一次并周期触发。</summary>
+        /// <summary>启动调度：按当前生效配置对各启用目标并行检测并周期触发。</summary>
         [RelayCommand(CanExecute = nameof(CanStart))]
         private async Task StartAsync()
         {
-            var detection = _config.Current.Detection;
-            await _scheduler.StartAsync(detection.ToDetectionOptions(), detection.Interval);
+            var config = _config.Current;
+            await _scheduler.StartAsync(config.GetEnabledDetectionOptions(), config.Detection.Interval);
         }
 
-        private bool CanStart() => State == SchedulerState.Stopped;
+        private bool CanStart() => State == SchedulerState.Stopped && _config.Current.HasEnabledTarget;
 
         [RelayCommand(CanExecute = nameof(CanStop))]
         private async Task StopAsync() => await _scheduler.StopAsync();
@@ -141,11 +148,11 @@ namespace NetworkMonitorTool.ViewModels
 
         private void RefreshSummary()
         {
-            var detection = _config.Current.Detection;
+            var config = _config.Current;
+            var detection = config.Detection;
+            var enabled = config.Targets.Count(t => t.Enabled);
 
-            TargetSummary = detection.Port is { } port
-                ? $"{detection.TargetIp}:{port}"
-                : detection.TargetIp;
+            TargetSummary = $"共 {config.Targets.Count} 个目标（启用 {enabled}）";
             IntervalSummary = detection.Interval.ToString();
             TimeoutSummary = $"{detection.TimeoutMs} ms";
             PolicySummary = detection.PortPolicy switch

@@ -12,6 +12,9 @@ namespace NetworkMonitorTool.Models
         /// <summary>目标 IP 或主机名。</summary>
         public required string TargetIp { get; init; }
 
+        /// <summary>目标标识（S16 多目标）：对应 <see cref="TargetConfig.Id"/>，旧记录为迁移目标 default。</summary>
+        public string TargetId { get; init; } = string.Empty;
+
         /// <summary>本次是否执行了端口检测（配置端口且按策略命中）。</summary>
         public int? Port { get; init; }
 
@@ -41,6 +44,7 @@ namespace NetworkMonitorTool.Models
         {
             Timestamp = Timestamp,
             TargetIp = TargetIp,
+            TargetId = TargetId,
             Port = Port,
             PingSuccess = PingSuccess,
             LatencyMs = LatencyMs,

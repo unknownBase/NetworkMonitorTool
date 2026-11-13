@@ -36,23 +36,27 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <!-- 状态色块 + 文案（告警中红色醒目，DESIGN 第八节 5、第十节） -->
+            <!-- 状态色块 + 文案（告警中红色醒目；绑定选定的目标，未选定时为汇总，DESIGN_S16 第八节 4） -->
             <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                <Ellipse Width="12" Height="12" Fill="{Binding Status.StatusBrush}" VerticalAlignment="Center" />
-                <TextBlock Text="{Binding Status.StatusText}" Margin="6,0,0,0" FontWeight="SemiBold"
+                <Ellipse Width="12" Height="12" Fill="{Binding Status.SelectedStatusBrush}" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding Status.SelectedStatusText}" Margin="6,0,0,0" FontWeight="SemiBold"
                            VerticalAlignment="Center" />
                 <TextBlock Text="!" Foreground="#C42B1C" FontWeight="Bold" Margin="4,0,0,0"
                            VerticalAlignment="Center"
-                           Visibility="{Binding Status.IsAlerting, Converter={StaticResource BoolToVisibilityConverter}}" />
+                           Visibility="{Binding Status.SelectedIsAlerting, Converter={StaticResource BoolToVisibilityConverter}}" />
             </StackPanel>
 
-            <TextBlock Grid.Column="1" Text="{Binding TargetText}" Margin="12,0" FontWeight="SemiBold"
-                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                       ToolTip="{Binding TargetText}" />
+            <!-- 目标选择：汇总（全部目标）+ 各启用目标，运行期状态不写配置 -->
+            <ComboBox Grid.Column="1" Margin="12,0" MinWidth="150" MaxWidth="240"
+                      HorizontalAlignment="Left" VerticalAlignment="Center"
+                      ItemsSource="{Binding TargetOptions}"
+                      SelectedItem="{Binding SelectedTargetOption}"
+                      DisplayMemberPath="Label"
+                      ToolTip="选择工具条展示的目标（汇总为全部目标）" />
 
-            <TextBlock Grid.Column="2" Text="{Binding Status.LatencyText, StringFormat=延迟 {0}}"
+            <TextBlock Grid.Column="2" Text="{Binding Status.SelectedLatencyText, StringFormat=延迟 {0}}"
                        Margin="0,0,12,0" VerticalAlignment="Center" />
-            <TextBlock Grid.Column="3" Text="{Binding Status.ConsecutiveFailuresText, StringFormat=连续失败 {0}}"
+            <TextBlock Grid.Column="3" Text="{Binding Status.SelectedConsecutiveFailuresText, StringFormat=连续失败 {0}}"
                        Margin="0,0,12,0" VerticalAlignment="Center" />
 
             <!-- 五个操作按钮（DESIGN 第九节 2） -->

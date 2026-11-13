@@ -6,7 +6,7 @@
              xmlns:vm="clr-namespace:NetworkMonitorTool.ViewModels"
              mc:Ignorable="d"
              d:DataContext="{d:DesignInstance Type=vm:DashboardViewModel}">
-    <!-- 仪表盘页（DESIGN 第四节 1）：状态大标识、目标摘要、最近结果、快捷操作、简表跳转 -->
+    <!-- 仪表盘页（DESIGN 第四节 1、DESIGN_S16 第八节 1）：汇总状态大标识、目标状态列表、目标摘要、最近结果、快捷操作、简表跳转 -->
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="20" MaxWidth="1000" HorizontalAlignment="Stretch">
 
@@ -30,7 +30,42 @@
                     BorderBrush="#C42B1C" BorderThickness="1"
                     Visibility="{Binding Status.IsAlerting, Converter={StaticResource BoolToVisibilityConverter}}">
                 <TextBlock Foreground="#C42B1C" FontWeight="SemiBold" TextWrapping="Wrap"
-                           Text="{Binding Status.ConsecutiveFailuresText, StringFormat=告警中：连续失败 {0} 次已触发告警，恢复成功后自动重置}" />
+                           Text="{Binding Status.ConsecutiveFailuresText, StringFormat=告警中：连续失败 {0}，恢复成功后自动重置}" />
+            </Border>
+
+            <!-- 目标状态列表（S16）：每行色块 + 显示名 / 地址 / 状态 / 延迟 / 连续失败 / 最近检测时间 -->
+            <Border Margin="0,16,0,0" Padding="14,12" CornerRadius="6" Background="#FFFFFF"
+                    BorderBrush="#E4E4E7" BorderThickness="1">
+                <StackPanel>
+                    <TextBlock Text="目标状态" FontSize="15" FontWeight="SemiBold" />
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,4" Opacity="0.65" TextElement.FontSize="12">
+                        <TextBlock Text="目标" Width="150" />
+                        <TextBlock Text="地址" Width="150" />
+                        <TextBlock Text="状态" Width="100" />
+                        <TextBlock Text="延迟" Width="90" />
+                        <TextBlock Text="连续失败" Width="90" />
+                        <TextBlock Text="最近检测" />
+                    </StackPanel>
+                    <ItemsControl ItemsSource="{Binding TargetStatuses}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Margin="0,3">
+                                    <Ellipse Width="10" Height="10" Margin="0,0,6,0" VerticalAlignment="Center"
+                                             Fill="{Binding StatusBrush}" />
+                                    <TextBlock Text="{Binding DisplayName}" Width="138" FontWeight="SemiBold"
+                                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                               ToolTip="{Binding DisplayName}" />
+                                    <TextBlock Text="{Binding Address}" Width="150" Opacity="0.75"
+                                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding StatusText}" Width="100" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding LatencyText}" Width="90" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding ConsecutiveFailuresText}" Width="90" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding LastDetectionText}" Opacity="0.75" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
             </Border>
 
             <!-- 目标与检测参数摘要 -->
@@ -100,6 +135,8 @@
                     <DataGridTextColumn Header="时间" Width="150"
                                         Binding="{Binding Timestamp, StringFormat=HH:mm:ss}" />
                     <DataGridTextColumn Header="目标" Width="140" Binding="{Binding TargetIp}" />
+                    <DataGridTextColumn Header="端口号" Width="70"
+                                        Binding="{Binding Port, TargetNullValue=—}" />
                     <DataGridTextColumn Header="Ping" Width="70"
                                         Binding="{Binding PingSuccess, Converter={StaticResource BoolToTextConverter}}" />
                     <DataGridTextColumn Header="延迟" Width="80"

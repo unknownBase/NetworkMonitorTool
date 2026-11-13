@@ -11,9 +11,9 @@ using NetworkMonitorTool.Services;
 namespace NetworkMonitorTool.ViewModels
 {
     /// <summary>
-    /// 日志页视图模型（DESIGN 第四节 2）：保留期记录集合（受内存条数限制）、
-    /// 状态 / 时间范围筛选、排序（默认时间降序，列头可切换）、CSV 导出（当前筛选结果）、
-    /// 清空（二次确认，同清界面集合与数据库）与打开日志目录。
+    /// 日志页视图模型（DESIGN 第四节 2、DESIGN_S16_MULTITARGET 第八节 2）：保留期记录集合（受内存条数限制）、
+    /// 状态 / 目标 / 时间范围筛选、排序（默认时间降序，列头可切换）、CSV 导出（当前筛选结果）、
+    /// 清空（二次确认，同清界面集合与全部目标历史）与打开日志目录。
     /// </summary>
     public sealed partial class LogPageViewModel : PageViewModelBase
     {
@@ -49,6 +49,10 @@ namespace NetworkMonitorTool.ViewModels
             };
             _selectedStatusFilter = StatusFilterOptions[0];
 
+            TargetFilterOptions = new ObservableCollection<TargetFilterOption>();
+            _selectedTargetFilter = new TargetFilterOption(null, "全部目标");
+            TargetFilterOptions.Add(_selectedTargetFilter);
+
             RecordsView = CollectionViewSource.GetDefaultView(Records);
             RecordsView.SortDescriptions.Add(
                 new SortDescription(nameof(DetectionRecord.Timestamp), ListSortDirection.Descending));
@@ -79,6 +83,11 @@ namespace NetworkMonitorTool.ViewModels
 
         [ObservableProperty] private StatusFilterOption _selectedStatusFilter;
 
+        /// <summary>目标下拉选项（S16）：首项为全部目标，其后为配置中的各目标。</summary>
+        public ObservableCollection<TargetFilterOption> TargetFilterOptions { get; }
+
+        [ObservableProperty] private TargetFilterOption _selectedTargetFilter;
+
         /// <summary>起始日期（含当日），null 表示不限。</summary>
         [ObservableProperty] private DateTime? _fromDate;
 
@@ -96,6 +105,8 @@ namespace NetworkMonitorTool.ViewModels
 
         public override async Task ActivateAsync()
         {
+            RebuildTargetFilterOptions();
+
             var since = _config.Current.RetentionStart;
             var limit = _config.Current.Storage.MaxInMemoryRecords;
             var loaded = await _store.LoadDetectionRecordsAsync(since, limit > 0 ? limit : null);
@@ -128,7 +139,7 @@ namespace NetworkMonitorTool.ViewModels
                 return;
             }
 
-            var filePath = _dialog.PickCsvSaveFile(_export.BuildDefaultFileName(_config.Current.Detection.TargetIp));
+            var filePath = _dialog.PickCsvSaveFile(_export.BuildDefaultFileName(CurrentExportTargetName()));
             if (filePath is null)
             {
                 return;
@@ -152,7 +163,7 @@ namespace NetworkMonitorTool.ViewModels
         private async Task ClearAsync()
         {
             if (!_dialog.Confirm(
-                    "清空将同时删除界面上展示的记录与数据库中的全部检测历史，且不可恢复。\n\n确定要清空吗？",
+                    "清空将同时删除界面上展示的记录与数据库中【全部目标】的检测历史，且不可恢复。\n\n确定要清空吗？",
                     "清空检测日志"))
             {
                 return;
@@ -190,12 +201,16 @@ namespace NetworkMonitorTool.ViewModels
         private void ResetFilter()
         {
             SelectedStatusFilter = StatusFilterOptions[0];
+            // 首项始终为「全部目标」，重置回该项
+            SelectedTargetFilter = TargetFilterOptions[0];
             FromDate = null;
             ToDate = null;
             ActionMessage = string.Empty;
         }
 
         partial void OnSelectedStatusFilterChanged(StatusFilterOption value) => RefreshView();
+
+        partial void OnSelectedTargetFilterChanged(TargetFilterOption value) => RefreshView();
 
         partial void OnFromDateChanged(DateTime? value) => RefreshView();
 
@@ -209,6 +224,12 @@ namespace NetworkMonitorTool.ViewModels
             }
 
             if (SelectedStatusFilter.Status is { } status && record.Status != status)
+            {
+                return false;
+            }
+
+            if (SelectedTargetFilter is { TargetId: { } targetId }
+                && !string.Equals(record.TargetId, targetId, StringComparison.Ordinal))
             {
                 return false;
             }
@@ -239,6 +260,32 @@ namespace NetworkMonitorTool.ViewModels
         {
             Records.Add(record);
             TrimToMemoryLimit();
+        }
+
+        /// <summary>重建目标下拉（配置变化后在重新激活页面时生效），尽量保留当前选择。</summary>
+        private void RebuildTargetFilterOptions()
+        {
+            var previousId = SelectedTargetFilter?.TargetId;
+            TargetFilterOptions.Clear();
+            TargetFilterOptions.Add(new TargetFilterOption(null, "全部目标"));
+            foreach (var target in _config.Current.Targets)
+            {
+                TargetFilterOptions.Add(new TargetFilterOption(target.Id, target.DisplayName));
+            }
+
+            SelectedTargetFilter = TargetFilterOptions.FirstOrDefault(o => o.TargetId == previousId)
+                ?? TargetFilterOptions[0];
+        }
+
+        /// <summary>导出文件名中的目标标识：选定目标用其地址，全部目标统一以「多目标」命名。</summary>
+        private string CurrentExportTargetName()
+        {
+            if (SelectedTargetFilter is not { TargetId: { } targetId })
+            {
+                return "多目标";
+            }
+
+            return _config.Current.FindTarget(targetId)?.Address ?? "目标";
         }
 
         private void OnRecordsChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -273,5 +320,8 @@ namespace NetworkMonitorTool.ViewModels
 
         /// <summary>状态下拉选项：null 表示全部（记录只会落入四种检测状态，暂停 / 告警为界面状态不入库）。</summary>
         public sealed record StatusFilterOption(DetectionStatus? Status, string Label);
+
+        /// <summary>目标下拉选项：TargetId 为 null 表示全部目标（含已删除目标的历史需选「全部目标」）。</summary>
+        public sealed record TargetFilterOption(string? TargetId, string Label);
     }
 }

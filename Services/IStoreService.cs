@@ -29,17 +29,22 @@ namespace NetworkMonitorTool.Services
 
         /// <summary>
         /// 加载 <paramref name="since"/>（含）之后的检测记录，按时间升序。
-        /// <paramref name="maxCount"/> 限制返回条数（取最近的 N 条）。持久化不可用时返回空集合。
+        /// <paramref name="maxCount"/> 限制返回条数（取最近的 N 条）；
+        /// <paramref name="targetId"/> 非空时仅返回该目标的记录（S16 多目标筛选）。
+        /// 持久化不可用时返回空集合。
         /// </summary>
         Task<IReadOnlyList<DetectionRecord>> LoadDetectionRecordsAsync(
-            DateTime since, int? maxCount = null, CancellationToken cancellationToken = default);
+            DateTime since, int? maxCount = null, string? targetId = null, CancellationToken cancellationToken = default);
 
-        /// <summary>加载 <paramref name="since"/>（含）之后的告警记录，按时间升序。持久化不可用时返回空集合。</summary>
+        /// <summary>
+        /// 加载 <paramref name="since"/>（含）之后的告警记录，按时间升序；
+        /// <paramref name="targetId"/> 非空时仅返回该目标的告警。持久化不可用时返回空集合。
+        /// </summary>
         Task<IReadOnlyList<AlertRecord>> LoadAlertRecordsAsync(
-            DateTime since, CancellationToken cancellationToken = default);
+            DateTime since, string? targetId = null, CancellationToken cancellationToken = default);
 
-        /// <summary>读取最近一条检测记录的连续失败计数（冷启动延续），无记录时返回 null。</summary>
-        Task<int?> LoadLatestConsecutiveFailuresAsync(CancellationToken cancellationToken = default);
+        /// <summary>读取指定目标最近一条检测记录的连续失败计数（冷启动延续），无记录时返回 null。</summary>
+        Task<int?> LoadLatestConsecutiveFailuresAsync(string targetId, CancellationToken cancellationToken = default);
 
         /// <summary>删除早于 <paramref name="before"/> 的检测记录，返回删除条数。</summary>
         Task<int> DeleteDetectionRecordsBeforeAsync(DateTime before, CancellationToken cancellationToken = default);

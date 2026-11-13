@@ -43,6 +43,7 @@ namespace NetworkMonitorTool.Services
                 {
                     Timestamp = DateTime.Now,
                     TargetIp = options.TargetIp,
+                    TargetId = options.TargetId,
                     Port = options.HasValidPort ? options.Port : null,
                     PingSuccess = ping.Success,
                     LatencyMs = ping.LatencyMs,
@@ -62,6 +63,7 @@ namespace NetworkMonitorTool.Services
                 {
                     Timestamp = DateTime.Now,
                     TargetIp = options.TargetIp,
+                    TargetId = options.TargetId,
                     Port = options.HasValidPort ? options.Port : null,
                     PingSuccess = false,
                     LatencyMs = null,

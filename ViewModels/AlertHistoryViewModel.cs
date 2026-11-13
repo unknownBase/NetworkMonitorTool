@@ -11,9 +11,9 @@ using NetworkMonitorTool.Services;
 namespace NetworkMonitorTool.ViewModels
 {
     /// <summary>
-    /// 告警历史页视图模型（DESIGN 第四节 3）：alert_record 分表记录展示、
-    /// 时间范围筛选、排序（默认时间降序）、CSV 导出（当前筛选结果）、
-    /// 清空（二次确认，同清界面集合与数据库）；运行期新告警实时追加。
+    /// 告警历史页视图模型（DESIGN 第四节 3、DESIGN_S16_MULTITARGET 第八节 2）：alert_record 分表记录展示、
+    /// 目标 / 时间范围筛选、排序（默认时间降序）、CSV 导出（当前筛选结果）、
+    /// 清空（二次确认，同清界面集合与全部目标历史）；运行期新告警实时追加。
     /// </summary>
     public sealed partial class AlertHistoryViewModel : PageViewModelBase
     {
@@ -43,6 +43,10 @@ namespace NetworkMonitorTool.ViewModels
             // 告警事件可能来自调度后台线程，统一编组到界面线程后追加
             alerts.AlertTriggered += (_, record) => OnUi(() => Append(record));
 
+            TargetFilterOptions = new ObservableCollection<TargetFilterOption>();
+            _selectedTargetFilter = new TargetFilterOption(null, "全部目标");
+            TargetFilterOptions.Add(_selectedTargetFilter);
+
             RecordsView = CollectionViewSource.GetDefaultView(Records);
             RecordsView.SortDescriptions.Add(
                 new SortDescription(nameof(AlertRecord.Timestamp), ListSortDirection.Descending));
@@ -67,6 +71,11 @@ namespace NetworkMonitorTool.ViewModels
 
         // ---- 时间筛选（DESIGN 第四节 3）----
 
+        /// <summary>目标下拉选项（S16）：首项为全部目标，其后为配置中的各目标。</summary>
+        public ObservableCollection<TargetFilterOption> TargetFilterOptions { get; }
+
+        [ObservableProperty] private TargetFilterOption _selectedTargetFilter;
+
         /// <summary>起始日期（含当日），null 表示不限。</summary>
         [ObservableProperty] private DateTime? _fromDate;
 
@@ -84,6 +93,8 @@ namespace NetworkMonitorTool.ViewModels
 
         public override async Task ActivateAsync()
         {
+            RebuildTargetFilterOptions();
+
             var since = _config.Current.RetentionStart;
             var loaded = await _store.LoadAlertRecordsAsync(since);
 
@@ -116,7 +127,7 @@ namespace NetworkMonitorTool.ViewModels
             }
 
             var filePath = _dialog.PickCsvSaveFile(
-                _export.BuildAlertDefaultFileName(_config.Current.Detection.TargetIp));
+                _export.BuildAlertDefaultFileName(CurrentExportTargetName()));
             if (filePath is null)
             {
                 return;
@@ -140,7 +151,7 @@ namespace NetworkMonitorTool.ViewModels
         private async Task ClearAsync()
         {
             if (!_dialog.Confirm(
-                    "清空将同时删除界面上展示的告警记录与数据库中的全部告警历史，且不可恢复。\n\n确定要清空吗？",
+                    "清空将同时删除界面上展示的告警记录与数据库中【全部目标】的告警历史，且不可恢复。\n\n确定要清空吗？",
                     "清空告警历史"))
             {
                 return;
@@ -163,10 +174,14 @@ namespace NetworkMonitorTool.ViewModels
         [RelayCommand]
         private void ResetFilter()
         {
+            // 首项始终为「全部目标」，重置回该项
+            SelectedTargetFilter = TargetFilterOptions[0];
             FromDate = null;
             ToDate = null;
             ActionMessage = string.Empty;
         }
+
+        partial void OnSelectedTargetFilterChanged(TargetFilterOption value) => RefreshView();
 
         partial void OnFromDateChanged(DateTime? value) => RefreshView();
 
@@ -175,6 +190,12 @@ namespace NetworkMonitorTool.ViewModels
         private bool FilterRecord(object item)
         {
             if (item is not AlertRecord record)
+            {
+                return false;
+            }
+
+            if (SelectedTargetFilter is { TargetId: { } targetId }
+                && !string.Equals(record.TargetId, targetId, StringComparison.Ordinal))
             {
                 return false;
             }
@@ -206,6 +227,32 @@ namespace NetworkMonitorTool.ViewModels
             Records.Add(record);
         }
 
+        /// <summary>重建目标下拉（配置变化后在重新激活页面时生效），尽量保留当前选择。</summary>
+        private void RebuildTargetFilterOptions()
+        {
+            var previousId = SelectedTargetFilter?.TargetId;
+            TargetFilterOptions.Clear();
+            TargetFilterOptions.Add(new TargetFilterOption(null, "全部目标"));
+            foreach (var target in _config.Current.Targets)
+            {
+                TargetFilterOptions.Add(new TargetFilterOption(target.Id, target.DisplayName));
+            }
+
+            SelectedTargetFilter = TargetFilterOptions.FirstOrDefault(o => o.TargetId == previousId)
+                ?? TargetFilterOptions[0];
+        }
+
+        /// <summary>导出文件名中的目标标识：选定目标用其地址，全部目标统一以「多目标」命名。</summary>
+        private string CurrentExportTargetName()
+        {
+            if (SelectedTargetFilter is not { TargetId: { } targetId })
+            {
+                return "多目标";
+            }
+
+            return _config.Current.FindTarget(targetId)?.Address ?? "目标";
+        }
+
         private void OnRecordsChanged(object? sender, NotifyCollectionChangedEventArgs e)
         {
             if (!_loadingRecords)
@@ -221,6 +268,9 @@ namespace NetworkMonitorTool.ViewModels
                 ? $"共 {Records.Count} 条告警记录"
                 : $"共 {Records.Count} 条告警记录，筛选后 {shown} 条";
         }
+
+        /// <summary>目标下拉选项：TargetId 为 null 表示全部目标（含已删除目标的历史需选「全部目标」）。</summary>
+        public sealed record TargetFilterOption(string? TargetId, string Label);
 
         /// <summary>后台线程事件统一编组到界面线程，避免绑定集合跨线程访问异常。</summary>
         private void OnUi(Action action)

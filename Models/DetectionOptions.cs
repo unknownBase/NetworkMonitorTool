@@ -6,6 +6,9 @@ namespace NetworkMonitorTool.Models
     /// </summary>
     public sealed class DetectionOptions
     {
+        /// <summary>目标标识（S16 多目标）：随记录写入并经告警引擎按目标分账。</summary>
+        public string TargetId { get; init; } = string.Empty;
+
         /// <summary>目标 IP 或主机名。</summary>
         public required string TargetIp { get; init; }
 
